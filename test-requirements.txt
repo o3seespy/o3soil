@@ -1,0 +1,6 @@
+pytest
+sfsimodels
+eqsig
+liquepy
+pysra
+

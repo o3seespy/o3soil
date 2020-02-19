@@ -1,0 +1,10 @@
+
+.idea/
+tests/matplotlibrc
+.cache/
+tests/__pycache__/
+.pytest_cache/
+dist/
+venv/
+docs/_build/
+user_paths.py
