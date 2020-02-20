@@ -76,9 +76,9 @@ def run():
     od = run_pysra(soil_profile, in_sig, odepths=np.array([0.0, 2.0]))
     pysra_sig = eqsig.AccSignal(od['ACCX_d0'], in_sig.dt)
 
-    outputs = o3soil.sra.site_response(soil_profile, in_sig, linear=1)
+    outputs = o3soil.sra.site_response(soil_profile, in_sig)
     resp_dt = outputs['time'][2] - outputs['time'][1]
-    surf_sig = eqsig.AccSignal(outputs['rel_accel'], resp_dt)
+    surf_sig = eqsig.AccSignal(outputs['ACCX'][0], resp_dt)
 
     o3_surf_vals = np.interp(pysra_sig.time, surf_sig.time, surf_sig.values)
 
@@ -103,10 +103,9 @@ def run():
         pysra_h = pysra_sig.smooth_fa_spectrum / in_sig.smooth_fa_spectrum
         sps[2].plot(pysra_sig.smooth_fa_frequencies, pysra_h, c=cbox(1))
         sps[2].axhline(1, c='k', ls='--')
-        sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r')
-
+        sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r', label='Error x10')
+        sps[0].legend()
         plt.show()
-        print(outputs)
 
     assert np.isclose(o3_surf_vals, pysra_sig.values, atol=0.01, rtol=100).all()
 

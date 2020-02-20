@@ -15,7 +15,7 @@ from bwplot import cbox
 import json
 
 
-def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
+def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None, rec_dt=None):
     """
     Run seismic analysis of a soil profile - example based on:
     http://opensees.berkeley.edu/wiki/index.php/Site_Response_Analysis_of_a_Layered_Soil_Column_(Total_Stress_Analysis)
@@ -31,10 +31,16 @@ def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
     -------
 
     """
+    if analysis_time is None:
+        analysis_time = asig.time[-1]
+    if outs is None:
+        outs = {'ACCX': [0]}  # Export the horizontal acceleration at the surface
+    if rec_dt is None:
+        rec_dt = analysis_dt
 
     osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
     assert isinstance(sp, sm.SoilProfile)
-    sp.gen_split(props=['shear_vel', 'unit_mass', 'cohesion', 'phi', 'bulk_mod', 'poissons_ratio', 'strain_peak'])
+    sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
     thicknesses = sp.split["thickness"]
     n_node_rows = len(thicknesses) + 1
     node_depths = np.cumsum(sp.split["thickness"])
@@ -90,7 +96,7 @@ def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
     prev_args = []
     prev_kwargs = {}
     prev_sl_type = None
-
+    eles = []
     for i in range(len(thicknesses)):
         y_depth = ele_depths[i]
 
@@ -143,6 +149,7 @@ def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
         # def element
         nodes = [sn[i+1][0], sn[i+1][1], sn[i][1], sn[i][0]]  # anti-clockwise
         ele = o3.element.Quad(osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=grav * unit_masses[i])
+        eles.append(ele)
 
     # define material and element for viscous dampers
     base_sl = sp.layer(sp.n_layers)
@@ -171,6 +178,35 @@ def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
 
     # o3.recorder.NodeToFile(osi, 'sample_out.txt', node=nd["R0L"], dofs=[o3.cc.X], res_type='accel')
     na = o3.recorder.NodeToArrayCache(osi, node=sn[0][0], dofs=[o3.cc.X], res_type='accel')
+    otypes = ['ACCX', 'TAU', 'STRS']
+    ods = {}
+    for otype in outs:
+        if otype == 'ACCX':
+
+            ods['ACCX'] = []
+            if isinstance(outs['ACCX'], str) and outs['ACCX'] == 'all':
+                ods['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn[:][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt)
+            else:
+                for i in range(len(outs['ACCX'])):
+                    ind = np.argmin(abs(node_depths - outs['ACCX'][i]))
+                    ods['ACCX'].append(o3.recorder.NodeToArrayCache(osi, node=sn[ind][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt))
+        if otype == 'TAU':
+            ods['TAU'] = []
+            if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
+                ods['TAU'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
+            else:
+                for i in range(len(outs['TAU'])):
+                    ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
+                    ods['TAU'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
+
+        if otype == 'STRS':
+            ods['STRS'] = []
+            if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
+                ods['STRS'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
+            else:
+                for i in range(len(outs['STRS'])):
+                    ind = np.argmin(abs(ele_depths - outs['STRS'][i]))
+                    ods['STRS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['strain'], dt=rec_dt))
 
     # Define the dynamic analysis
     ts_obj = o3.time_series.Path(osi, dt=asig.dt, values=asig.velocity * -1, factor=c_base)
@@ -187,8 +223,6 @@ def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
     o3.analysis.Transient(osi)
 
     o3.test_check.EnergyIncr(osi, tol=1.0e-7, max_iter=10)
-    analysis_time = asig.time[-1]
-    analysis_dt = asig.dt / 10
     o3.extensions.to_py_file(osi)
 
     while opy.getTime() < analysis_time:
@@ -197,11 +231,16 @@ def site_response(sp, asig, linear=0, freqs=(0.5, 10), xi=0.03):
             print('failed')
             break
     opy.wipe()
-    outputs = {
-        "time": np.arange(0, analysis_time, analysis_dt),
-        "rel_disp": [],
-        "rel_accel": na.collect(),
-    }
+    out_dict = {}
+    for otype in ods:
+        if isinstance(ods[otype], list):
+            out_dict[otype] = []
+            for i in range(len(ods[otype])):
+                out_dict[otype].append(ods[otype][i].collect())
+            out_dict[otype] = np.array(out_dict[otype])
+        else:
+            out_dict[otype] = ods[otype].collect().T
+    out_dict['time'] = np.arange(0, analysis_time, rec_dt)
 
-    return outputs
+    return out_dict
 
