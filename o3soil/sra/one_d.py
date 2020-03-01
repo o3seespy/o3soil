@@ -118,7 +118,18 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             app2mod = sl.app2mod
         elif sl.type == 'pimy':
             sl_class = o3.nd_material.PressureIndependMultiYield
-            overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass, 'bulk_mod': sl.bulk_mods / 1e3}
+            overrides = {'nu': pois, 'p_atm': 101,
+                         'rho': umass,
+                         'nd': 2.0,
+                         'ref_shear_modul': sl.g_mod / 1e3,
+                         'ref_bulk_modul': sl.bulk_mod / 1e3,
+                         'peak_shear_stra': 0.05,
+                         'cohesi': sl.cohesion / 1e3,
+                         'friction_ang': sl.phi,
+                         'ref_press': 101,
+                         'press_depend_coe': 0.0,
+                         # 'no_yield_surf': 20
+                         }
         else:
             sl_class = o3.nd_material.ElasticIsotropic
             sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
@@ -168,7 +179,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     o3.analyze(osi, 40, 1.)
 
     for i in range(len(soil_mats)):
-        if isinstance(soil_mats[i], o3.nd_material.PM4Sand):
+        if isinstance(soil_mats[i], o3.nd_material.PM4Sand) or isinstance(soil_mats[i], o3.nd_material.PressureIndependMultiYield):
             o3.update_material_stage(osi, soil_mats[i], 1)
     o3.analyze(osi, 50, 0.5)
 
