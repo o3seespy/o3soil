@@ -56,14 +56,11 @@ def set_params_from_op_pimy_model(sl, strain_max, p_ref=100.0e3, hyp=True):
 
 
 def calc_backbone_op_pimy_model(sl, strain_max, strains, p_ref=100.0e3, esig_v0=100., ndm=2):
-    if ndm == 2:
-        k0 = 1 - np.sin(sl.phi_r)
-        p_eff = (esig_v0 * (1 + 1 * k0) / 2)
-    else:
-        k0 = sl.poissons_ratio / (1. - sl.poissons_ratio)
-        p_eff = (esig_v0 * (1 + 2 * k0) / 3)
+    k0 = sl.poissons_ratio / (1. - sl.poissons_ratio)
+    p_eff = (esig_v0 * (1 + 2 * k0) / 3)
     # Octahedral shear stress
     tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_eff + 2 * np.sqrt(2.) / 3 * sl.cohesion
+    tau_f_ref = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
     if hasattr(sl, 'get_g_mod_at_v_eff_stress'):
         g_init = sl.get_g_mod_at_v_eff_stress(esig_v0)
 
@@ -77,7 +74,7 @@ def calc_backbone_op_pimy_model(sl, strain_max, strains, p_ref=100.0e3, esig_v0=
         g_mod_r = sl.g_mod
         d = 0.0
 
-    strain_r = strain_max * tau_f / (g_mod_r * strain_max - tau_f)
+    strain_r = strain_max * tau_f_ref / (g_mod_r * strain_max - tau_f_ref)
     tau_back = g_init * strains / ((1 + strains / strain_r) * (p_ref / p_eff) ** d)
     return tau_back
 
@@ -87,20 +84,20 @@ def create():
     vs = 200.
     unit_mass = 1700.0
     sl.cohesion = 68.0e3
-    sl.phi = 0.0
+    sl.cohesion = 0.0
+    sl.phi = 30.0
     sl.g_mod = vs ** 2 * unit_mass
     print('G_mod: ', sl.g_mod)
     sl.unit_dry_weight = unit_mass * 9.8
     sl.specific_gravity = 2.65
     k0 = 1.0
     sl.poissons_ratio = k0 / (1 + k0) - 0.01
-    sl.id = 1
-    assert np.isclose(vs, sl.get_shear_vel(saturated=False))
     strain_max = 0.01
     strains = np.logspace(-4, -1.5, 40)
     esig_v0 = 100.0e3
     ref_press = 100.e3
     ndm = 2
+    # TODO: phi and cohesion are not used as you would expect for user defined surfaces !!! recalculated: tau_max calculated the
     set_params_from_op_pimy_model(sl, strain_max, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
 
@@ -121,29 +118,30 @@ def create():
                                                          damping_min=sl.xi_min,
                                                          strains=strains)
         pysra_tau = pysra_sl.mod_reduc.values * sl.g_mod * pysra_sl.mod_reduc.strains
-        taus = calc_backbone_op_pimy_model(sl, strain_max, strains, ref_press, ndm=ndm)
+        taus = calc_backbone_op_pimy_model(sl, strain_max, strains, ref_press, ndm=ndm, esig_v0=esig_v0)
         osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
+        # See example: https://opensees.berkeley.edu/wiki/index.php/PressureIndependMultiYield_Material
         base_mat = o3.nd_material.PressureIndependMultiYield(osi,
                                                              nd=2,
-                                                             rho=sl.unit_sat_mass / 1e3,
-                                                             g_mod_ref=sl.g_mod_ref / 1e3,
-                                                             bulk_mod_ref=sl.bulk_mod_ref / 1e3,
+                                                             rho=sl.unit_sat_mass,
+                                                             g_mod_ref=sl.g_mod_ref,
+                                                             bulk_mod_ref=sl.bulk_mod_ref,
                                                              peak_strain=strain_max,
-                                                             cohesion=sl.cohesion / 1e3,
+                                                             cohesion=sl.cohesion,
                                                              phi=sl.phi,
-                                                             p_ref=sl.p_ref / 1e3,
-                                                             m=0.0,
-                                                             n_surf=20
+                                                             p_ref=sl.p_ref,
+                                                             d=0.0,
+                                                             n_surf=25
                                                              )
 
         disps = np.array([0.0, 0.00003, -0.00003, 0.0004, 0.0001, 0.0009, -0.0009]) * 10
         disps = np.linspace(0.0, 0.02, 100)
         k0_init = sl.poissons_ratio / (1 - sl.poissons_ratio)
         print(k0_init)
-        stress, strain, v_eff, h_eff, exit_code = d2d.run_2d_strain_driver(osi, base_mat, esig_v0=esig_v0 / 1e3, disps=disps,
-                                                                       handle='warn', verbose=1, k0_init=k0_init)
+        stress, strain, v_eff, h_eff, exit_code = d2d.run_2d_strain_driver_iso(osi, base_mat, esig_v0=esig_v0, disps=disps,
+                                                                       handle='warn', verbose=1, target_d_inc=0.00001)
         bf, sps = plt.subplots(nrows=2)
-        sps[0].plot(strain, -stress * 1e3, c='r')
+        sps[0].plot(strain, stress, c='r')
         sps[0].plot(strains, taus, label='approx PIMY')
         sps[0].plot(pysra_sl.mod_reduc.strains, pysra_tau, ls='--', label='PySRA Hyperbolic')
         # sps[1].plot(stress)
