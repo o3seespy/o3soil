@@ -94,8 +94,8 @@ def run_2d_stress_driver(osi, base_mat, esig_v0, forces, d_step=0.001, max_steps
 
 def run_2d_strain_driver(osi, base_mat, esig_v0, disps, target_d_inc=0.00001, max_steps=10000, handle='silent', da_strain_max=0.05, max_cycles=200, srate=0.0001, esig_v_min=1.0, k0_init=1, verbose=0,
                    cyc_lim_fail=True):
-    if k0_init != 1:
-        raise ValueError('Only supports k0=1')
+    if not np.isclose(k0_init, 1., rtol=0.05):
+        raise ValueError(f'Only supports k0=1, current k0={k0_init:.3f}')
     max_steps_per_half_cycle = 50000
 
     nodes = [
@@ -133,7 +133,6 @@ def run_2d_strain_driver(osi, base_mat, esig_v0, disps, target_d_inc=0.00001, ma
     o3.analyze(osi, 1)
 
     exit_code = None
-    print('hhh')
     # loop through the total number of cycles
     react = 0
     strain = [0]
@@ -234,8 +233,6 @@ if __name__ == '__main__':
                                                          n_surf=20
                                                          )
 
-    # stress, strain, v_eff, h_eff, exit_code = run_2d_stress_driver(osi, base_mat, esig_v0=vert_sig_eff, forces=tau, handle='warn', d_step=0.00001,
-    #                                            da_strain_max=0.05, esig_v_min=5., verbose=1)
     disps = np.array([0.0, 0.00003, -0.00003, 0.0004, 0.0001, 0.0009, -0.0009]) * 10
     stress, strain, v_eff, h_eff, exit_code = run_2d_strain_driver(osi, base_mat, esig_v0=vert_sig_eff, disps=disps,
                                                                    handle='warn',
