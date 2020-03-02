@@ -92,6 +92,81 @@ def run_2d_stress_driver(osi, base_mat, esig_v0, forces, d_step=0.001, max_steps
     return np.array(stress), np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
 
 
+def run_2d_strain_driver(osi, base_mat, esig_v0, disps, target_d_inc=0.00001, max_steps=10000, handle='silent', da_strain_max=0.05, max_cycles=200, srate=0.0001, esig_v_min=1.0, k0_init=1, verbose=0,
+                   cyc_lim_fail=True):
+    if k0_init != 1:
+        raise ValueError('Only supports k0=1')
+    max_steps_per_half_cycle = 50000
+
+    nodes = [
+        o3.node.Node(osi, 0.0, 0.0),
+        o3.node.Node(osi, 1.0, 0.0),
+        o3.node.Node(osi, 1.0, 1.0),
+        o3.node.Node(osi, 0.0, 1.0)
+    ]
+    for node in nodes:
+        o3.Fix2DOF(osi, node, 1, 1)
+
+    mat = o3.nd_material.InitStressNDMaterial(osi, other=base_mat, init_stress=-esig_v0, n_dim=2)
+
+    ele = o3.element.SSPquad(osi, nodes, mat, 'PlaneStrain', 1, 0.0, 0.0)
+
+    # create analysis
+    o3.constraints.Penalty(osi, 1.0e15, 1.0e15)
+    o3.algorithm.Linear(osi)
+    o3.numberer.RCM(osi)
+    o3.system.FullGeneral(osi)
+    o3.analysis.Static(osi)
+
+    d_init = 0.0
+    d_max = 0.1  # element height is 1m
+    max_time = (d_max - d_init) / srate
+
+    ts0 = o3.time_series.Linear(osi, factor=1)
+    o3.pattern.Plain(osi, ts0)
+    o3.Load(osi, nodes[2], [1.0, 0.0])
+    o3.Load(osi, nodes[3], [1.0, 0.0])
+
+    o3.analyze(osi, 1)
+    o3.set_parameter(osi, value=1, eles=[ele], args=['materialState'])
+    o3.update_material_stage(osi, base_mat, 1)
+    o3.analyze(osi, 1)
+
+    exit_code = None
+    print('hhh')
+    # loop through the total number of cycles
+    react = 0
+    strain = [0]
+    stresses = o3.get_ele_response(osi, ele, 'stress')
+    stress = [stresses[2]]
+    v_eff = [stresses[1]]
+    h_eff = [stresses[0]]
+    d_incs = np.diff(disps, prepend=0)
+    # orys = np.where(diffs >= 0, 1, -1)
+    for i in range(len(disps)):
+        d_inc_i = d_incs[i]
+        if target_d_inc < abs(d_inc_i):
+            n = int(abs(d_inc_i / target_d_inc))
+            d_step = d_inc_i / n
+        else:
+            n = 1
+            d_step = d_inc_i
+        for j in range(n):
+            o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
+            o3.Load(osi, nodes[2], [1.0, 0.0])
+            o3.Load(osi, nodes[3], [1.0, 0.0])
+            o3.analyze(osi, 1)
+            o3.gen_reactions(osi)
+            # react = o3.get_ele_response(osi, ele, 'force')[0]
+            stresses = o3.get_ele_response(osi, ele, 'stress')
+            v_eff.append(stresses[1])
+            h_eff.append(stresses[0])
+            stress.append(stresses[2])
+            end_strain = -o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
+            strain.append(end_strain)
+
+    return np.array(stress), np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
+
 
 def _set_hyperbolic_params_from_op_pimy_model(sl, esig_v0, strain_max):
     k0 = 1 - np.sin(sl.phi_r)
@@ -159,8 +234,12 @@ if __name__ == '__main__':
                                                          n_surf=20
                                                          )
 
-    stress, strain, v_eff, h_eff, exit_code = run_2d_stress_driver(osi, base_mat, esig_v0=vert_sig_eff, forces=tau, handle='warn', d_step=0.00001,
-                                               da_strain_max=0.05, esig_v_min=5., verbose=1)
+    # stress, strain, v_eff, h_eff, exit_code = run_2d_stress_driver(osi, base_mat, esig_v0=vert_sig_eff, forces=tau, handle='warn', d_step=0.00001,
+    #                                            da_strain_max=0.05, esig_v_min=5., verbose=1)
+    disps = np.array([0.0, 0.00003, -0.00003, 0.0004, 0.0001, 0.0009, -0.0009]) * 10
+    stress, strain, v_eff, h_eff, exit_code = run_2d_strain_driver(osi, base_mat, esig_v0=vert_sig_eff, disps=disps,
+                                                                   handle='warn',
+                                                                   da_strain_max=0.05, esig_v_min=5., verbose=1)
     print(exit_code)
     pis = eqsig.get_peak_array_indices(stress)
     n_cycs = 0.5 * np.arange(len(pis)) - 0.25
