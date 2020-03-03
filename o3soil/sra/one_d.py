@@ -63,7 +63,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
                     o3.node.Node(osi, ele_width, -node_depths[i])])
         # set x and y dofs equal for left and right nodes
         o3.EqualDOF(osi, sn[i][0], sn[i][1], [o3.cc.X, o3.cc.Y])
-
+    sn = np.array(sn)
     # Fix base nodes
     o3.Fix2DOF(osi, sn[-1][0], o3.cc.FREE, o3.cc.FIXED)
     o3.Fix2DOF(osi, sn[-1][1], o3.cc.FREE, o3.cc.FIXED)
@@ -193,7 +193,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
             ods['ACCX'] = []
             if isinstance(outs['ACCX'], str) and outs['ACCX'] == 'all':
-                ods['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn[:][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt)
+                ods['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn[:, 0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt)
             else:
                 for i in range(len(outs['ACCX'])):
                     ind = np.argmin(abs(node_depths - outs['ACCX'][i]))
@@ -256,7 +256,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
                 out_dict[otype] = a[:, strs_inds].T
             else:
                 out_dict[otype] = ods[otype].collect().T
-    out_dict['time'] = np.arange(0, analysis_time, rec_dt)
+    out_dict['time'] = np.arange(0, len(out_dict[otype][0])) * rec_dt
 
     return out_dict
 

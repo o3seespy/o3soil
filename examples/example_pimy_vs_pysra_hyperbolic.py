@@ -74,7 +74,8 @@ def calc_backbone_op_pimy_model(sl, strain_max, strains, p_ref=100.0e3, esig_v0=
         g_mod_r = sl.g_mod
         d = 0.0
 
-    strain_r = strain_max * tau_f_ref / (g_mod_r * strain_max - tau_f_ref)
+    dss_eq = np.sqrt(3. / 2)  # correct to direct simple shear equivalent
+    strain_r = strain_max * tau_f_ref / (g_mod_r * strain_max - tau_f_ref) * dss_eq
     tau_back = g_init * strains / ((1 + strains / strain_r) * (p_ref / p_eff) ** d)
     return tau_back
 
@@ -114,7 +115,8 @@ def create():
 
     compare_backbone = 1
     if compare_backbone:
-        pysra_sl = pysra.site.ModifiedHyperbolicSoilType("", 1, strain_ref=sl.strain_ref,
+        dss_eq = np.sqrt(3. / 2)
+        pysra_sl = pysra.site.ModifiedHyperbolicSoilType("", 1, strain_ref=sl.strain_ref * dss_eq,
                                                          curvature=sl.strain_curvature,
                                                          damping_min=sl.xi_min,
                                                          strains=strains)
@@ -139,7 +141,7 @@ def create():
         disps = np.linspace(0.0, 0.02, 100)
         k0_init = sl.poissons_ratio / (1 - sl.poissons_ratio)
         print(k0_init)
-        stress, strain, v_eff, h_eff, exit_code = d2d.run_2d_strain_driver(osi, base_mat, esig_v0=esig_v0, disps=disps,
+        stress, strain, v_eff, h_eff, exit_code = d2d.run_2d_strain_driver_iso(osi, base_mat, esig_v0=esig_v0, disps=disps,
                                                                        handle='warn', verbose=1, target_d_inc=0.00001)
         bf, sps = plt.subplots(nrows=2)
         sps[0].plot(strain, stress, c='r')
