@@ -1,18 +1,9 @@
-import eqsig
-from collections import OrderedDict
 import numpy as np
 import sfsimodels as sm
 import openseespy.opensees as opy
 import o3seespy as o3
 import o3seespy.extensions
-import matplotlib.pyplot as plt
 import copy
-
-# for linear analysis comparison
-import liquepy as lq
-import pysra
-from bwplot import cbox
-import json
 
 
 def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None, rec_dt=None):
@@ -97,6 +88,10 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     prev_kwargs = {}
     prev_sl_type = None
     eles = []
+    tau_inds = []
+    total_stress_inds = 0
+    strs_inds = []
+    total_strain_inds = 0
     for i in range(len(thicknesses)):
         y_depth = ele_depths[i]
 
@@ -121,15 +116,16 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             overrides = {'nu': pois, 'p_atm': 101,
                          'rho': umass,
                          'nd': 2.0,
-                         'ref_shear_modul': sl.g_mod / 1e3,
-                         'ref_bulk_modul': sl.bulk_mod / 1e3,
-                         'peak_shear_stra': 0.05,
-                         'cohesi': sl.cohesion / 1e3,
-                         'friction_ang': sl.phi,
-                         'ref_press': 101,
-                         'press_depend_coe': 0.0,
+                         'g_mod_ref': sl.g_mod / 1e3,
+                         'bulk_mod_ref': sl.bulk_mod / 1e3,
+                         'cohesion': sl.cohesion / 1e3,
+                         'd': 0.0,
                          # 'no_yield_surf': 20
                          }
+            tau_inds.append(total_stress_inds + 3)  # 4th
+            total_stress_inds += 5
+            strs_inds.append(total_strain_inds + 2)  # 3rd
+            total_strain_inds += 3
         else:
             sl_class = o3.nd_material.ElasticIsotropic
             sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
@@ -159,7 +155,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
         # def element
         nodes = [sn[i+1][0], sn[i+1][1], sn[i][1], sn[i][0]]  # anti-clockwise
-        ele = o3.element.Quad(osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=grav * unit_masses[i])
+        # ele = o3.element.Quad(osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=grav * unit_masses[i])
+        ele = o3.element.SSPquad(osi, nodes, mat, 'PlaneStrain', ele_thick, 0.0, b2=grav * unit_masses[i])
         eles.append(ele)
 
     # define material and element for viscous dampers
@@ -247,10 +244,18 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         if isinstance(ods[otype], list):
             out_dict[otype] = []
             for i in range(len(ods[otype])):
-                out_dict[otype].append(ods[otype][i].collect())
+                a = ods[otype][i].collect()
+                out_dict[otype].append(a[3::4])  # TODO: not working for generic case
             out_dict[otype] = np.array(out_dict[otype])
         else:
-            out_dict[otype] = ods[otype].collect().T
+            if otype == 'TAU':
+                a = ods[otype].collect()
+                out_dict[otype] = a[:, tau_inds].T * 1e3
+            elif otype == 'STRS':
+                a = ods[otype].collect()
+                out_dict[otype] = a[:, strs_inds].T
+            else:
+                out_dict[otype] = ods[otype].collect().T
     out_dict['time'] = np.arange(0, analysis_time, rec_dt)
 
     return out_dict

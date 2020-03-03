@@ -84,14 +84,15 @@ def create():
     vs = 200.
     unit_mass = 1700.0
     sl.cohesion = 68.0e3
-    sl.cohesion = 0.0
-    sl.phi = 30.0
-    sl.g_mod = vs ** 2 * unit_mass
+    # sl.cohesion = 0.0
+    sl.phi = 0.0
+    sl.g_mod = 68.0e6
     print('G_mod: ', sl.g_mod)
     sl.unit_dry_weight = unit_mass * 9.8
     sl.specific_gravity = 2.65
     k0 = 1.0
-    sl.poissons_ratio = k0 / (1 + k0) - 0.01
+    # sl.poissons_ratio = k0 / (1 + k0) - 0.01
+    sl.poissons_ratio = 0.3
     strain_max = 0.01
     strains = np.logspace(-4, -1.5, 40)
     esig_v0 = 100.0e3
@@ -138,7 +139,7 @@ def create():
         disps = np.linspace(0.0, 0.02, 100)
         k0_init = sl.poissons_ratio / (1 - sl.poissons_ratio)
         print(k0_init)
-        stress, strain, v_eff, h_eff, exit_code = d2d.run_2d_strain_driver_iso(osi, base_mat, esig_v0=esig_v0, disps=disps,
+        stress, strain, v_eff, h_eff, exit_code = d2d.run_2d_strain_driver(osi, base_mat, esig_v0=esig_v0, disps=disps,
                                                                        handle='warn', verbose=1, target_d_inc=0.00001)
         bf, sps = plt.subplots(nrows=2)
         sps[0].plot(strain, stress, c='r')
