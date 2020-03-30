@@ -30,6 +30,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         outs = {'ACCX': [0]}  # Export the horizontal acceleration at the surface
     if rec_dt is None:
         rec_dt = analysis_dt
+    else:
+        raise ValueError('This is causing an error')
 
     osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
     assert isinstance(sp, sm.SoilProfile)

@@ -81,7 +81,7 @@ def run():
     sl.xi = 0.03  # for linear analysis
     sl.sra_type = 'hyperbolic'
     o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
-    sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
+    sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
     assert np.isclose(vs, sl.get_shear_vel(saturated=False))
     soil_profile = sm.SoilProfile()
     soil_profile.add_layer(0, sl)
@@ -100,7 +100,7 @@ def run():
     sl.xi = 0.03  # for linear analysis
     sl.sra_type = 'hyperbolic'
     o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
-    sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
+    sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
     soil_profile.add_layer(9.5, sl)
     soil_profile.height = 20.0
     ecp_out = sm.Output()
@@ -108,6 +108,9 @@ def run():
     ofile = open('ecp.json', 'w')
     ofile.write(json.dumps(ecp_out.to_dict(), indent=4))
     ofile.close()
+    mods = sm.load_json('ecp.json', default_to_base=True)
+    soil_profile = mods['soil_profile'][1]
+
 
     record_path = TEST_DATA_DIR
     record_filename = 'short_motion_dt0p01.txt'
@@ -132,7 +135,8 @@ def run():
         bf, sps = plt.subplots(nrows=3)
 
         sps[0].plot(in_sig.time, in_sig.values, c='k', label='Input')
-        sps[0].plot(pysra_sig.time, o3_surf_vals, c=cbox(0), label='o3')
+        # sps[0].plot(pysra_sig.time, o3_surf_vals, c=cbox(0), label='o3')
+        sps[0].plot(outputs['time'], outputs['ACCX'][0], c=cbox(3), label='o3')
         sps[0].plot(pysra_sig.time, pysra_sig.values, c=cbox(1), label='pysra')
 
         sps[1].plot(in_sig.fa_frequencies, abs(in_sig.fa_spectrum), c='k')
