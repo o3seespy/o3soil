@@ -94,13 +94,13 @@ def create():
     k0 = 1.0
     # sl.poissons_ratio = k0 / (1 + k0) - 0.01
     sl.poissons_ratio = 0.3
-    strain_max = 0.01
+    sl.peak_strain = 0.01
     strains = np.logspace(-4, -1.5, 40)
     esig_v0 = 100.0e3
     ref_press = 100.e3
     ndm = 2
     # TODO: phi and cohesion are not used as you would expect for user defined surfaces !!! recalculated: tau_max calculated the
-    set_params_from_op_pimy_model(sl, strain_max, ref_press)
+    set_params_from_op_pimy_model(sl, sl.peak_strain, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
 
     sp = sm.SoilProfile()
@@ -121,7 +121,7 @@ def create():
                                                          damping_min=sl.xi_min,
                                                          strains=strains)
         pysra_tau = pysra_sl.mod_reduc.values * sl.g_mod * pysra_sl.mod_reduc.strains
-        taus = calc_backbone_op_pimy_model(sl, strain_max, strains, ref_press, ndm=ndm, esig_v0=esig_v0)
+        taus = calc_backbone_op_pimy_model(sl, sl.peak_strain, strains, ref_press, ndm=ndm, esig_v0=esig_v0)
         osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
         # See example: https://opensees.berkeley.edu/wiki/index.php/PressureIndependMultiYield_Material
         base_mat = o3.nd_material.PressureIndependMultiYield(osi,
@@ -129,7 +129,7 @@ def create():
                                                              rho=sl.unit_sat_mass,
                                                              g_mod_ref=sl.g_mod_ref,
                                                              bulk_mod_ref=sl.bulk_mod_ref,
-                                                             peak_strain=strain_max,
+                                                             peak_strain=sl.peak_strain,
                                                              cohesion=sl.cohesion,
                                                              phi=sl.phi,
                                                              p_ref=sl.p_ref,
@@ -145,8 +145,8 @@ def create():
                                                                        handle='warn', verbose=1, target_d_inc=0.00001)
         bf, sps = plt.subplots(nrows=2)
         sps[0].plot(strain, stress, c='r')
-        sps[0].plot(strains, taus, label='approx PIMY')
-        sps[0].plot(pysra_sl.mod_reduc.strains, pysra_tau, ls='--', label='PySRA Hyperbolic')
+        sps[0].plot(strains[:-1], taus[:-1], label='approx PIMY')
+        sps[0].plot(pysra_sl.mod_reduc.strains[:-1], pysra_tau[:-1], ls='--', label='PySRA Hyperbolic')
         # sps[1].plot(stress)
         sps[1].plot(v_eff)
         sps[1].plot(h_eff)
