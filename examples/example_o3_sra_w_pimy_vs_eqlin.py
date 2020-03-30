@@ -14,32 +14,32 @@ import pysra
 from bwplot import cbox
 import json
 
-
-def set_params_from_op_pimy_model(sl, strain_max, p_ref=100.0e3, hyp=True):
-    # Octahedral shear stress
-    tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
-    if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
-        g_mod_r = sl.get_g_mod_at_m_eff_stress(p_ref)
-        if sl.phi == 0.0:
-            d = 0.
-        else:
-            d = sl.a
-    else:
-        g_mod_r = sl.g_mod
-        d = 0.0
-
-    strain_r = strain_max * tau_f / (g_mod_r * strain_max - tau_f)
-    sdf = (p_ref / p_ref) ** d
-    if hyp:  # hyperbolic model parameters
-        sl.strain_curvature = 1.0
-        sl.xi_min = 0.01
-        sl.strain_ref = strain_r / sdf
-        sl.sra_type = "hyperbolic"
-
-    sl.p_ref = p_ref
-    sl.g_mod_ref = g_mod_r
-    b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
-    sl.bulk_mod_ref = b_mod
+#
+# def set_params_from_op_pimy_model(sl, strain_max, p_ref=100.0e3, hyp=True):
+#     # Octahedral shear stress
+#     tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
+#     if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
+#         g_mod_r = sl.get_g_mod_at_m_eff_stress(p_ref)
+#         if sl.phi == 0.0:
+#             d = 0.
+#         else:
+#             d = sl.a
+#     else:
+#         g_mod_r = sl.g_mod
+#         d = 0.0
+#
+#     strain_r = strain_max * tau_f / (g_mod_r * strain_max - tau_f)
+#     sdf = (p_ref / p_ref) ** d
+#     if hyp:  # hyperbolic model parameters
+#         sl.strain_curvature = 1.0
+#         sl.xi_min = 0.01
+#         sl.strain_ref = strain_r / sdf
+#         sl.sra_type = "hyperbolic"
+#
+#     sl.p_ref = p_ref
+#     sl.g_mod_ref = g_mod_r
+#     b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
+#     sl.bulk_mod_ref = b_mod
 
 
 def run_pysra(soil_profile, asig, odepths):
@@ -80,7 +80,7 @@ def run():
     ref_press = 100.e3
     sl.xi = 0.03  # for linear analysis
     sl.sra_type = 'hyperbolic'
-    set_params_from_op_pimy_model(sl, sl.peak_strain, ref_press)
+    o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
     assert np.isclose(vs, sl.get_shear_vel(saturated=False))
     soil_profile = sm.SoilProfile()
@@ -99,7 +99,7 @@ def run():
     sl.peak_strain = 0.1  # set additional parameter required for PIMY model
     sl.xi = 0.03  # for linear analysis
     sl.sra_type = 'hyperbolic'
-    set_params_from_op_pimy_model(sl, sl.peak_strain, ref_press)
+    o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
     soil_profile.add_layer(9.5, sl)
     soil_profile.height = 20.0

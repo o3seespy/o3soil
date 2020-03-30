@@ -6,7 +6,7 @@ import o3seespy as o3
 import o3soil.drivers.two_d as d2d
 
 
-def set_params_from_op_pimy_model(sl, strain_max, p_ref=100.0e3, hyp=True):
+def set_params_from_op_pimy_model(sl, p_ref=100.0e3, hyp=True):
     # Octahedral shear stress
     tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
     if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
@@ -18,13 +18,15 @@ def set_params_from_op_pimy_model(sl, strain_max, p_ref=100.0e3, hyp=True):
     else:
         g_mod_r = sl.g_mod
         d = 0.0
-
-    strain_r = strain_max * tau_f / (g_mod_r * strain_max - tau_f)
+    print('tau_f: ', tau_f)
+    print('cohesion: ', sl.cohesion)
+    strain_r = sl.peak_strain * tau_f / (g_mod_r * sl.peak_strain - tau_f)
     sdf = (p_ref / p_ref) ** d
     if hyp:  # hyperbolic model parameters
         sl.strain_curvature = 1.0
         sl.xi_min = 0.01
-        sl.strain_ref = strain_r / sdf
+        dss_eq = 1.  # np.sqrt(3. / 2)  # correct to direct simple shear equivalent
+        sl.strain_ref = strain_r / sdf / dss_eq
         sl.sra_type = "hyperbolic"
 
     sl.p_ref = p_ref
@@ -33,29 +35,7 @@ def set_params_from_op_pimy_model(sl, strain_max, p_ref=100.0e3, hyp=True):
     sl.bulk_mod_ref = b_mod
 
 
-
-# def calc_hyperbolic_params_for_op_pimy_model(sl, strain_max, p_ref=100.0, esig_v0=100., ndm=2):
-#     if ndm == 2:
-#         k0 = 1 - np.sin(sl.phi_r)
-#         p_eff = (esig_v0 * (1 + 1 * k0) / 2)
-#     else:
-#         k0 = sl.poissons_ratio / (1. - sl.poissons_ratio)
-#         p_eff = (esig_v0 * (1 + 2 * k0) / 3)
-#     # Octahedral shear stress
-#     tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_eff + 2 * np.sqrt(2.) / 3 * sl.cohesion
-#     if hasattr(sl, 'get_g_mod_at_v_eff_stress'):
-#         d = sl.a
-#         g_mod_r = sl.g0_mod * (p_eff / p_ref) ** d
-#     else:
-#         g_mod_r = sl.g_mod
-#         d = 0.0
-#
-#     strain_r = strain_max * tau_f / (g_mod_r * strain_max - tau_f)
-#     sdf = (p_ref / p_eff) ** d
-#     return strain_r / sdf, 1.0
-
-
-def calc_backbone_op_pimy_model(sl, strain_max, strains, p_ref=100.0e3, esig_v0=100., ndm=2):
+def calc_backbone_op_pimy_model(sl, strains, p_ref=100.0e3, esig_v0=100., ndm=2):
     k0 = sl.poissons_ratio / (1. - sl.poissons_ratio)
     p_eff = (esig_v0 * (1 + 2 * k0) / 3)
     # Octahedral shear stress
@@ -75,7 +55,7 @@ def calc_backbone_op_pimy_model(sl, strain_max, strains, p_ref=100.0e3, esig_v0=
         d = 0.0
 
     dss_eq = np.sqrt(3. / 2)  # correct to direct simple shear equivalent
-    strain_r = strain_max * tau_f_ref / (g_mod_r * strain_max - tau_f_ref) * dss_eq
+    strain_r = sl.peak_strain * tau_f_ref / (g_mod_r * sl.peak_strain - tau_f_ref) * dss_eq
     tau_back = g_init * strains / ((1 + strains / strain_r) * (p_ref / p_eff) ** d)
     return tau_back
 
@@ -94,13 +74,13 @@ def create():
     k0 = 1.0
     # sl.poissons_ratio = k0 / (1 + k0) - 0.01
     sl.poissons_ratio = 0.3
-    sl.peak_strain = 0.01
+    sl.peak_strain = 0.1
     strains = np.logspace(-4, -1.5, 40)
     esig_v0 = 100.0e3
     ref_press = 100.e3
     ndm = 2
     # TODO: phi and cohesion are not used as you would expect for user defined surfaces !!! recalculated: tau_max calculated the
-    set_params_from_op_pimy_model(sl, sl.peak_strain, ref_press)
+    set_params_from_op_pimy_model(sl, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
 
     sp = sm.SoilProfile()
@@ -121,7 +101,7 @@ def create():
                                                          damping_min=sl.xi_min,
                                                          strains=strains)
         pysra_tau = pysra_sl.mod_reduc.values * sl.g_mod * pysra_sl.mod_reduc.strains
-        taus = calc_backbone_op_pimy_model(sl, sl.peak_strain, strains, ref_press, ndm=ndm, esig_v0=esig_v0)
+        taus = calc_backbone_op_pimy_model(sl, strains, ref_press, ndm=ndm, esig_v0=esig_v0)
         osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
         # See example: https://opensees.berkeley.edu/wiki/index.php/PressureIndependMultiYield_Material
         base_mat = o3.nd_material.PressureIndependMultiYield(osi,
