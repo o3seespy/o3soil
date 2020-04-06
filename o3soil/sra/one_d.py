@@ -101,32 +101,39 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
         sl_id = sp.get_layer_index_by_depth(y_depth)
         sl = sp.layer(sl_id)
+
         app2mod = {}
         if y_depth > sp.gwl:
-            umass = sl.unit_sat_mass / 1e3
+            umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
         else:
             umass = sl.unit_dry_mass / 1e3
+        overrides = {'nu': pois, 'p_atm': 101,
+                     'rho': umass,
+                     'unit_moist_mass': umass,
+                     'nd': 2.0,
+                     # 'n_surf': 25
+                     }
         # Define material
         if sl.type == 'pm4sand':
             sl_class = o3.nd_material.PM4Sand
-            overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
+            # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
             app2mod = sl.app2mod
         elif sl.type == 'sdmodel':
             sl_class = o3.nd_material.StressDensity
-            overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
+            # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
             app2mod = sl.app2mod
-        elif sl.type == 'pimy':
-            sl_class = o3.nd_material.PressureIndependMultiYield
-            overrides = {'nu': pois, 'p_atm': 101,
-                         'rho': umass,
-                         'nd': 2.0,
-                         'g_mod_ref': sl.g_mod / 1e3,
-                         'bulk_mod_ref': sl.bulk_mod / 1e3,
-                         'cohesion': sl.cohesion / 1e3,
-                         'p_ref': sl.p_ref / 1e3,
-                         'd': sl.a,
-                         # 'n_surf': 25
-                         }
+        elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
+            overrides['p_ref'] = sl.p_ref / 1e3
+            overrides['g_mod_ref'] = sl.g_mod_ref / 1e3
+            overrides['bulk_mod_ref'] = sl.bulk_mod_ref / 1e3
+            overrides['d'] = sl.a
+            if sl.type == 'pimy':
+                overrides['cohesion'] = sl.cohesion / 1e3
+                sl_class = o3.nd_material.PressureIndependMultiYield
+            elif sl.type == 'pdmy':
+                sl_class = o3.nd_material.PressureDependMultiYield
+            elif sl.type == 'pdmy02':
+                sl_class = o3.nd_material.PressureDependMultiYield02
         else:
             sl_class = o3.nd_material.ElasticIsotropic
             sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
@@ -134,18 +141,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             overrides = {'nu': sl.poissons_ratio, 'unit_moist_mass': umass}
 
         args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
-        changed = 0
-        if sl.type != prev_sl_type or len(args) != len(prev_args) or len(kwargs) != len(prev_kwargs):
-            changed = 1
-        else:
-            for j, arg in enumerate(args):
-                if not np.isclose(arg, prev_args[j]):
-                    changed = 1
-            for pm in kwargs:
-                if pm not in prev_kwargs or not np.isclose(kwargs[pm], prev_kwargs[pm]):
-                    changed = 1
 
-        if changed:
+        if o3.extensions.has_o3_model_changed(sl.type, prev_sl_type, args, prev_args, kwargs, prev_kwargs):
             mat = sl_class(osi, *args, **kwargs)
             prev_sl_type = sl.type
             prev_args = copy.deepcopy(args)
@@ -169,7 +166,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
     # Static analysis
     o3.constraints.Transformation(osi)
-    o3.test_check.NormDispIncr(osi, tol=1.0e-4, max_iter=30, p_flag=0)
+    o3.test.NormDispIncr(osi, tol=1.0e-6, max_iter=20, p_flag=0)
+    # o3.test_check.EnergyIncr(osi, tol=1.0e-5, max_iter=20, p_flag=0)
     o3.algorithm.Newton(osi)
     o3.numberer.RCM(osi)
     o3.system.ProfileSPD(osi)
@@ -178,8 +176,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     o3.analyze(osi, 40, 1.)
 
     for i in range(len(soil_mats)):
-        if isinstance(soil_mats[i], o3.nd_material.PM4Sand) or isinstance(soil_mats[i], o3.nd_material.PressureIndependMultiYield):
-            o3.update_material_stage(osi, soil_mats[i], 1)
+        if hasattr(soil_mats[i], 'update_to_nonlinear'):
+            soil_mats[i].update_to_nonlinear(osi)
     o3.analyze(osi, 50, 0.5)
 
     o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
@@ -194,12 +192,13 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     all_node_ydisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
 
     # Define the dynamic analysis
+    print('Here')
+    o3.constraints.Transformation(osi)
+    o3.test.NormDispIncr(osi, tol=1.0e-3, max_iter=15, p_flag=0)
     o3.algorithm.Newton(osi)
     o3.system.SparseGeneral(osi)
     o3.numberer.RCM(osi)
-    o3.constraints.Transformation(osi)
     o3.integrator.Newmark(osi, newmark_gamma, newmark_beta)
-
     o3.analysis.Transient(osi)
 
     if pload:
@@ -231,11 +230,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         o3.pattern.Plain(osi, ts_obj)
         o3.Load(osi, sn[-1][0], [1., 0.])
 
-    o3.test_check.EnergyIncr(osi, tol=1.0e-7, max_iter=10)
-
     # Run the dynamic motion
     while o3.get_time(osi) - init_time < analysis_time:
-        # print(o3.get_time(osi))
         if o3.analyze(osi, 1, analysis_dt):
             print('failed')
             break
