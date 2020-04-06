@@ -123,7 +123,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
                          'g_mod_ref': sl.g_mod / 1e3,
                          'bulk_mod_ref': sl.bulk_mod / 1e3,
                          'cohesion': sl.cohesion / 1e3,
-                         'd': 0.0,
+                         'p_ref': sl.p_ref / 1e3,
+                         'd': sl.a,
                          # 'n_surf': 25
                          }
         else:
@@ -416,7 +417,7 @@ class O3SRAOutputs(object):
         return self.out_dict
 
 
-def site_resopnse_w_pysra(soil_profile, asig, odepths):
+def site_response_w_pysra(soil_profile, asig, odepths):
     import liquepy as lq
     import pysra
     pysra_profile = lq.sra.sm_profile_to_pysra(soil_profile, d_inc=[0.5] * soil_profile.n_layers)

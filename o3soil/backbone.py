@@ -6,10 +6,7 @@ def set_params_from_op_pimy_model(sl, p_ref=100.0e3, hyp=True):
     tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
     if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
         g_mod_r = sl.get_g_mod_at_m_eff_stress(p_ref)
-        if sl.phi == 0.0:
-            d = 0.
-        else:
-            d = sl.a
+        d = sl.a
     else:
         g_mod_r = sl.g_mod
         d = 0.0
@@ -30,7 +27,6 @@ def set_params_from_op_pimy_model(sl, p_ref=100.0e3, hyp=True):
     b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
     sl.bulk_mod_ref = b_mod
     sl.inputs += ['p_ref', 'g_mod_ref', 'bulk_mod_ref']
-
 
 def calc_backbone_op_pimy_model(sl, strains, p_ref=100.0e3, esig_v0=100., ndm=2):
     k0 = sl.poissons_ratio / (1. - sl.poissons_ratio)
