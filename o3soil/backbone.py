@@ -6,6 +6,8 @@ def set_params_from_op_pimy_model(sl, p_ref=100.0e3, hyp=True):
     tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
     if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
         g_mod_r = sl.get_g_mod_at_m_eff_stress(p_ref)
+        if hasattr(sl, 'g_mod_p0'):
+            assert sl.g_mod_p0 == 0.0
         d = sl.a
     else:
         g_mod_r = sl.g_mod
