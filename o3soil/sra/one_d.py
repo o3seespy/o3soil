@@ -8,7 +8,7 @@ import os
 
 
 def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  rec_dt=None, base_imp=-1, cache_path=None, pload=0.0, opfile=None):
+                  rec_dt=None, base_imp=0, cache_path=None, pload=0.0, opfile=None):
     """
     Run seismic analysis of a soil profile - example based on:
     http://opensees.berkeley.edu/wiki/index.php/Site_Response_Analysis_of_a_Layered_Soil_Column_(Total_Stress_Analysis)
@@ -36,7 +36,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         rec_dt = analysis_dt
     else:
         raise ValueError('This is causing an error')
-    state = 1
+    state = 0
     if opfile:
         state = 3
     osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=state)
@@ -212,7 +212,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     # Define the dynamic analysis
     print('Here')
     o3.constraints.Transformation(osi)
-    o3.test.NormDispIncr(osi, tol=1.0e-3, max_iter=15, p_flag=0)
+    o3.test.NormDispIncr(osi, tol=1.0e-5, max_iter=15, p_flag=0)
+    #o3.test_check.EnergyIncr(osi, tol=1.0e-7, max_iter=10)
     o3.algorithm.Newton(osi)
     o3.system.SparseGeneral(osi)
     o3.numberer.RCM(osi)

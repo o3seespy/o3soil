@@ -8,7 +8,7 @@ import os
 
 
 def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  rec_dt=None, fixed_base=0, cache_path=None, pload=0.0):
+                  rec_dt=None, base_imp=0, cache_path=None, pload=0.0, opfile=None):
     """
     Run seismic analysis of a soil profile - example based on:
     http://opensees.berkeley.edu/wiki/index.php/Site_Response_Analysis_of_a_Layered_Soil_Column_(Total_Stress_Analysis)
@@ -19,6 +19,10 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         A soil profile
     asig: eqsig.AccSignal object
         An acceleration signal
+    base_imp: float
+        If positive then use as impedence at base of model,
+        If zero then use last soil layer
+        If negative then use fixed base
 
     Returns
     -------
@@ -32,8 +36,10 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         rec_dt = analysis_dt
     else:
         raise ValueError('This is causing an error')
-
-    osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
+    state = 0
+    if opfile:
+        state = 3
+    osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=state)
     assert isinstance(sp, sm.SoilProfile)
     sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
     thicknesses = sp.split["thickness"]
@@ -44,6 +50,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     unit_masses = sp.split["unit_mass"] / 1e3
 
     grav = 9.81
+    # Rayleigh damping parameters
     omega_1 = 2 * np.pi * freqs[0]
     omega_2 = 2 * np.pi * freqs[1]
     a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
@@ -51,9 +58,6 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
     k0 = 0.5
     pois = k0 / (1 + k0)
-
-    newmark_gamma = 0.5
-    newmark_beta = 0.25
 
     ele_width = 3 * min(thicknesses)
 
@@ -69,7 +73,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         o3.EqualDOF(osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
     sn = np.array(sn)
 
-    if fixed_base:
+    if base_imp < 0:
         # Fix base nodes
         for j in range(nx + 1):
             o3.Fix2DOF(osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED)
@@ -160,7 +164,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             # eles.append(ele)
             eles.append(o3.element.SSPquad(osi, nodes, mat, o3.cc.PLANE_STRAIN, ele_thick, 0.0, grav * unit_masses[i]))
 
-    if not fixed_base:
+    if base_imp >= 0:
         # define material and element for viscous dampers
         base_sl = sp.layer(sp.n_layers)
         c_base = ele_width * base_sl.unit_dry_mass / 1e3 * sp.get_shear_vel_at_depth(sp.height)
@@ -169,18 +173,18 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
     # Static analysis
     o3.constraints.Transformation(osi)
-    o3.test_check.NormDispIncr(osi, tol=1.0e-4, max_iter=30, p_flag=0)
+    o3.test.NormDispIncr(osi, tol=1.0e-5, max_iter=30, p_flag=0)
     o3.algorithm.Newton(osi)
     o3.numberer.RCM(osi)
     o3.system.ProfileSPD(osi)
-    o3.integrator.Newmark(osi, newmark_gamma, newmark_beta)
+    o3.integrator.Newmark(osi, gamma=0.5, beta=0.25)
     o3.analysis.Transient(osi)
-    o3.analyze(osi, 40, 1.)
+    o3.analyze(osi, 10, 500.)
 
     for i in range(len(soil_mats)):
-        if isinstance(soil_mats[i], o3.nd_material.PM4Sand) or isinstance(soil_mats[i], o3.nd_material.PressureIndependMultiYield):
-            o3.update_material_stage(osi, soil_mats[i], 1)
-    o3.analyze(osi, 50, 0.5)
+        if hasattr(soil_mats[i], 'update_to_nonlinear'):
+            soil_mats[i].update_to_nonlinear(osi)
+    o3.analyze(osi, 40, 500.)
 
     o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
 
@@ -194,12 +198,14 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     all_node_ydisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
 
     # Define the dynamic analysis
+    print('Here')
+    o3.constraints.Transformation(osi)
+    o3.test.NormDispIncr(osi, tol=1.0e-5, max_iter=15, p_flag=0)
+    #o3.test_check.EnergyIncr(osi, tol=1.0e-7, max_iter=10)
     o3.algorithm.Newton(osi)
     o3.system.SparseGeneral(osi)
     o3.numberer.RCM(osi)
-    o3.constraints.Transformation(osi)
-    o3.integrator.Newmark(osi, newmark_gamma, newmark_beta)
-
+    o3.integrator.Newmark(osi, gamma=0.5, beta=0.25)
     o3.analysis.Transient(osi)
 
     if pload:
@@ -210,7 +216,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         o3.pattern.Plain(osi, time_series)
         o3.Load(osi, sn[0][0], [pload * ele_width, 0])
         o3.Load(osi, sn[9][0], [-pload * ele_width, 0])
-        if not fixed_base:
+        if base_imp >= 0:
             o3.Load(osi, sn[-1][0], [-pload, 0])
 
         static_dt = 0.1
@@ -223,7 +229,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     o3sra_outs.start_recorders(osi, outs, sn, eles, rec_dt=rec_dt)
 
     # Define the dynamic input motion
-    if fixed_base:
+    if base_imp < 0:  # fixed base
         acc_series = o3.time_series.Path(osi, dt=asig.dt, values=-asig.values)  # should be negative
         o3.pattern.UniformExcitation(osi, dir=o3.cc.X, accel_series=acc_series)
     else:
@@ -231,11 +237,10 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         o3.pattern.Plain(osi, ts_obj)
         o3.Load(osi, sn[-1][0], [1., 0.])
 
-    o3.test_check.EnergyIncr(osi, tol=1.0e-7, max_iter=10)
-
+    if state == 3:
+        o3.extensions.to_py_file(osi, opfile)
     # Run the dynamic motion
     while o3.get_time(osi) - init_time < analysis_time:
-        # print(o3.get_time(osi))
         if o3.analyze(osi, 1, analysis_dt):
             print('failed')
             break

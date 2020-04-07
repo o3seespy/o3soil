@@ -148,7 +148,7 @@ def run():
         pysra_h = pysra_sig.smooth_fa_spectrum / in_sig.smooth_fa_spectrum
         sps[2].plot(pysra_sig.smooth_fa_frequencies, pysra_h, c=cbox(1))
         sps[2].axhline(1, c='k', ls='--')
-        sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r', label='Error x10')
+        sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r', label='Error x10', lw=0.5)
         sps[0].legend()
         plt.show()
 
