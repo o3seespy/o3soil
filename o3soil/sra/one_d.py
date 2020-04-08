@@ -70,7 +70,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         # Establish left and right nodes
         sn.append([o3.node.Node(osi, ele_width * j, -node_depths[i]) for j in range(nx + 1)])
         # set x and y dofs equal for left and right nodes
-        o3.EqualDOF(osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
+        if i != n_node_rows -1:
+            o3.EqualDOF(osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
     sn = np.array(sn)
 
     if base_imp < 0:
@@ -198,8 +199,6 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             soil_mats[i].update_to_nonlinear(osi)
     o3.analyze(osi, 40, 500.)
 
-    o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
-
     # reset time and analysis
     o3.set_time(osi, 0.0)  # TODO:
     o3.wipe_analysis(osi)
@@ -212,13 +211,14 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     # Define the dynamic analysis
     print('Here')
     o3.constraints.Transformation(osi)
-    o3.test.NormDispIncr(osi, tol=1.0e-5, max_iter=15, p_flag=0)
-    #o3.test_check.EnergyIncr(osi, tol=1.0e-7, max_iter=10)
+    o3.test.NormDispIncr(osi, tol=1.0e-4, max_iter=30, p_flag=0)
+    #o3.test_check.EnergyIncr(osi, tol=1.0e-6, max_iter=30)
     o3.algorithm.Newton(osi)
     o3.system.SparseGeneral(osi)
     o3.numberer.RCM(osi)
     o3.integrator.Newmark(osi, gamma=0.5, beta=0.25)
     o3.analysis.Transient(osi)
+    o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
 
     if pload:
         static_time = 100
