@@ -158,6 +158,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         else:
             sl_class = o3.nd_material.ElasticIsotropic
             sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
+            overrides['nu'] = sl.poissons_ratio
             app2mod['rho'] = 'unit_moist_mass'
         args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
 
@@ -166,7 +167,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             prev_sl_class = sl_class
             prev_args = copy.deepcopy(args)
             prev_kwargs = copy.deepcopy(kwargs)
-
+            mat.dynamic_poissons_ratio = sl.poissons_ratio
             soil_mats.append(mat)
 
         # def element
@@ -197,6 +198,9 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     for i in range(len(soil_mats)):
         if hasattr(soil_mats[i], 'update_to_nonlinear'):
             soil_mats[i].update_to_nonlinear(osi)
+    for ele in eles:
+        mat = ele.mat
+        o3.set_parameter(osi, value=mat.dynamic_poissons_ratio, eles=[ele], args=['poissonRatio', 1])
     o3.analyze(osi, 40, 500.)
 
     # reset time and analysis
@@ -209,7 +213,6 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     all_node_ydisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
 
     # Define the dynamic analysis
-    print('Here')
     o3.constraints.Transformation(osi)
     o3.test.NormDispIncr(osi, tol=1.0e-4, max_iter=30, p_flag=0)
     #o3.test_check.EnergyIncr(osi, tol=1.0e-6, max_iter=30)
@@ -242,7 +245,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
     # Define the dynamic input motion
     if base_imp < 0:  # fixed base
-        acc_series = o3.time_series.Path(osi, dt=asig.dt, values=-asig.values)  # should be negative
+        acc_series = o3.time_series.Path(osi, dt=asig.dt, values=asig.values)
         o3.pattern.UniformExcitation(osi, dir=o3.cc.X, accel_series=acc_series)
     else:
         ts_obj = o3.time_series.Path(osi, dt=asig.dt, values=asig.velocity * 1, factor=c_base)
