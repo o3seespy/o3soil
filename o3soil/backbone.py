@@ -12,8 +12,6 @@ def set_params_from_op_pimy_model(sl, p_ref=100.0e3, hyp=True):
     else:
         g_mod_r = sl.g_mod
         d = 0.0
-    print('tau_f: ', tau_f)
-    print('cohesion: ', sl.cohesion)
     strain_r = sl.peak_strain * tau_f / (g_mod_r * sl.peak_strain - tau_f)
     sdf = (p_ref / p_ref) ** d
     if hyp:  # hyperbolic model parameters
@@ -29,6 +27,31 @@ def set_params_from_op_pimy_model(sl, p_ref=100.0e3, hyp=True):
     b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
     sl.bulk_mod_ref = b_mod
     sl.inputs += ['p_ref', 'g_mod_ref', 'bulk_mod_ref']
+
+
+def set_hyp_params_from_op_pimy_or_pdmy_model(sl, p_ref=100.0e3, hyp=True):
+    # Octahedral shear stress
+    tau_f = (2 * np.sqrt(2.) * np.sin(sl.phi_r)) / (3 - np.sin(sl.phi_r)) * p_ref + 2 * np.sqrt(2.) / 3 * sl.cohesion
+    if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
+        g_mod_r = sl.get_g_mod_at_m_eff_stress(p_ref)
+        if hasattr(sl, 'g_mod_p0'):
+            assert sl.g_mod_p0 == 0.0
+        d = sl.a
+    else:
+        g_mod_r = sl.g_mod
+        d = 0.0
+    print('tau_f: ', tau_f)
+    print('cohesion: ', sl.cohesion)
+    strain_r = sl.peak_strain * tau_f / (g_mod_r * sl.peak_strain - tau_f)
+    sdf = (p_ref / p_ref) ** d
+    if hyp:  # hyperbolic model parameters
+        sl.strain_curvature = 1.0
+        sl.xi_min = 0.01
+        dss_eq = 1.  # np.sqrt(3. / 2)  # correct to direct simple shear equivalent
+        sl.strain_ref = strain_r / sdf / dss_eq
+        sl.sra_type = "hyperbolic"
+        sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref']
+
 
 def calc_backbone_op_pimy_model(sl, strains, p_ref=100.0e3, esig_v0=100., ndm=2):
     k0 = sl.poissons_ratio / (1. - sl.poissons_ratio)

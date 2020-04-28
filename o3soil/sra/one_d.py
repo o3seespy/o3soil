@@ -128,7 +128,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
             app2mod = sl.app2mod
         elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
-            if hasattr(sl, 'a'):
+            if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
                 if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
                     v_eff = sp.get_v_eff_stress_at_depth(y_depth)
                     k0 = 1 - np.sin(sl.phi_r)
@@ -245,7 +245,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         acc_series = o3.time_series.Path(osi, dt=asig.dt, values=-asig.values)  # should be negative
         o3.pattern.UniformExcitation(osi, dir=o3.cc.X, accel_series=acc_series)
     else:
-        ts_obj = o3.time_series.Path(osi, dt=asig.dt, values=asig.velocity * -1, factor=c_base)
+        ts_obj = o3.time_series.Path(osi, dt=asig.dt, values=asig.velocity * 1, factor=c_base)
         o3.pattern.Plain(osi, ts_obj)
         o3.Load(osi, sn[-1][0], [1., 0.])
     if state == 3:
