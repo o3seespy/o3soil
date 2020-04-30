@@ -42,7 +42,7 @@ def run_2d_stress_driver(osi, base_mat, esig_v0, forces, d_step=0.001, max_steps
     o3.Load(osi, nodes[3], [1.0, 0.0])
 
     o3.analyze(osi, 1)
-    o3.set_parameter(osi, value=1, eles=[ele], args=['materialState'])
+    o3.set_parameter(osi, value=1, eles=[ele], args=['materialState', base_mat.tag])
     o3.update_material_stage(osi, base_mat, 1)
     o3.analyze(osi, 1)
 
@@ -128,7 +128,7 @@ def run_2d_strain_driver_iso(osi, base_mat, esig_v0, disps, target_d_inc=0.00001
     o3.Load(osi, nodes[3], [1.0, 0.0])
 
     o3.analyze(osi, 1)
-    o3.set_parameter(osi, value=1, eles=[ele], args=['materialState'])
+    o3.set_parameter(osi, value=1, eles=[ele], args=['materialState', mat.tag])
     o3.update_material_stage(osi, base_mat, 1)
     o3.analyze(osi, 1)
 
@@ -353,7 +353,9 @@ if __name__ == '__main__':
     disps = np.array([0.0, 0.00003, -0.00003, 0.0004, 0.0001, 0.0009, -0.0012]) * 10
     # disps = np.array([0.0, 0.001, 0.0002])
     # disps = np.linspace(0.0, 0.01, 100)
-    stress, strain, v_eff, h_eff, exit_code = run_2d_strain_driver(osi, base_mat, esig_v0=vert_sig_eff, disps=disps,
+    # stress, strain, v_eff, h_eff, exit_code = run_2d_strain_driver(osi, base_mat, esig_v0=vert_sig_eff, disps=disps,
+    #                                                                handle='warn', verbose=1)
+    stress, strain, v_eff, h_eff, exit_code = run_2d_strain_driver_iso(osi, base_mat, esig_v0=vert_sig_eff, disps=disps,
                                                                    handle='warn', verbose=1)
     print(exit_code)
     pis = eqsig.get_peak_array_indices(stress)

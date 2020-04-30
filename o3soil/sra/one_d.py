@@ -200,7 +200,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             soil_mats[i].update_to_nonlinear(osi)
     for ele in eles:
         mat = ele.mat
-        o3.set_parameter(osi, value=mat.dynamic_poissons_ratio, eles=[ele], args=['poissonRatio', 1])
+        o3.set_parameter(osi, value=mat.dynamic_poissons_ratio, eles=[ele], args=['poissonRatio', 1])  # This depends on name of poisson's ratio variable
     o3.analyze(osi, 40, 500.)
 
     # reset time and analysis
