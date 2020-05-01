@@ -31,20 +31,20 @@ def set_bnwf_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=True
     # use 10 springs - have the exterior spring
     w = fd.width
     pos = np.linspace(w / 20, fd.width - w / 20, n_springs) - fd.width / 2
-    if dettach:
-        k_ten = 1.0e-5 * k_spring
-    else:
-        k_ten = k_spring
     if not soil_nl:
-        int_spring_mat = o3.uniaxial_material.Elastic(osi, k_ten, eneg=k_spring)  # TODO: dettachable
-        ext_spring_mat = o3.uniaxial_material.Elastic(osi, r_k * k_ten, eneg=r_k * k_spring)
+        if dettach:
+            k_ten = 1.0e-5 * k_spring
+        else:
+            k_ten = k_spring
+        int_spring_mat = o3.uniaxial_material.Elastic(osi, k_spring, eneg=k_ten)
+        ext_spring_mat = o3.uniaxial_material.Elastic(osi, r_k * k_spring, eneg=r_k * k_ten)
     else:
         q_ult = gf.capacity_salgado_2008(sl, fd)
-        q_spring = q_ult / 4  # TODO: should exterior be different?
+        q_spring = q_ult / 4  # TODO: should exterior be different? -should be divide by 10
         int_spring_mat_1 = o3.uniaxial_material.Steel02(osi, q_spring, k_spring, b=0.05, params=[10, 0.925, 0.15])
         ext_spring_mat_1 = o3.uniaxial_material.Steel02(osi, q_spring, r_k * k_spring, b=0.05, params=[10, 0.925, 0.15])
         if dettach:
-            mat_obj2 = o3.uniaxial_material.Elastic(osi, 0.0001 * k_spring, eneg=k_spring * 1000)
+            mat_obj2 = o3.uniaxial_material.Elastic(osi, 1000 * k_spring, eneg=0.0001 * k_spring)
             int_spring_mat = o3.uniaxial_material.Series(osi, [int_spring_mat_1, mat_obj2])
             ext_spring_mat = o3.uniaxial_material.Series(osi, [ext_spring_mat_1, mat_obj2])
         else:
@@ -145,7 +145,7 @@ def run_example():
     shear_mat = o3.uniaxial_material.Elastic(osi, k_shear)
     # sl.override('g_mod', sl.g_mod)
     soil_fd_ele = o3.element.ZeroLength(osi, [sl_node, bot_node], mats=[shear_mat], dirs=[o3.cc.DOF2D_X])
-    bnwf = set_bnwf_via_harden_2009(osi, sl, fd, sl_node, bot_node, axis='width', soil_nl=False)
+    bnwf = set_bnwf_via_harden_2009(osi, sl, fd, sl_node, bot_node, axis='width', soil_nl=True, dettach=True)
     import o3seespy.extensions
     o3.extensions.to_py_file(osi)
 
@@ -206,6 +206,7 @@ def run_example():
 
     import matplotlib.pyplot as plt
     plt.plot(rot, mom)
+
     plt.show()
 
 if __name__ == '__main__':
