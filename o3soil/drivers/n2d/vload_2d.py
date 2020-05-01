@@ -2,7 +2,7 @@ import o3seespy as o3
 import numpy as np
 
 
-def load_element(osi, mat, v_pressure, nu_dyn=None):
+def run_vload(osi, mat, v_pressure, nu_dyn=None):
 
     h_ele = 1.
     nodes = [
@@ -67,7 +67,7 @@ def run_example():
 
     mat = o3.nd_material.PressureIndependMultiYield(osi, 2, 2058.49, g_mod, b_mod, 68000.0, 0.1, 0.0, 100000.0, 0.0, 25)
     # mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e6, nu=0.3)
-    ss, es = load_element(osi, mat, v_pressure=esig_v0)
+    ss, es = run_vload(osi, mat, v_pressure=esig_v0)
     print(ss[-1])
     plt.plot(es[:, 1], ss[:, 1])
     plt.show()

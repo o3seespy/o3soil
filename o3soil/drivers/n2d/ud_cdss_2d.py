@@ -2,8 +2,8 @@ import o3seespy as o3
 import math
 
 
-def run(osi, mat, csr, esig_v0=101.0e3, static_bias=0.0, n_lim=100, nu_dyn=None, opyfile=None, water_bulk_mod=2.2e6, strain_limit=0.03, strain_inc=5.0e-6, cached=0):
-
+def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None, opyfile=None, strain_limit=0.03, strain_inc=5.0e-6):
+    """Undrained cyclic simple shear test for 2d element"""
     damp = 0.02
     omega0 = 0.2
     omega1 = 20.0
@@ -29,6 +29,7 @@ def run(osi, mat, csr, esig_v0=101.0e3, static_bias=0.0, n_lim=100, nu_dyn=None,
     # Note water bulk modulus, permeability, void ratio are irrelevant, since constant volume test
     # - so as soil skeleton contracts
     # the bulk modulus of the soil skeleton controls the change in effective stress
+    water_bulk_mod = 2.2e6
     ele = o3.element.SSPquadUP(osi, all_nodes, mat, 1.0, water_bulk_mod, 1.,
                                 1.0e-4, 1.0e-4, 0.6, alpha=1.0e-5, b1=0.0, b2=0.0)
 
@@ -194,8 +195,9 @@ def run_example():
     # Define material
     nu_init = k0 / (1 + k0)
     mat = o3.nd_material.PM4Sand(osi, relative_density, g0_mod, h_po, unit_sat_mass, p_atm, nu=nu_init)
-
-    stress, strain, ppt, disps = run(osi, mat, csr=csr, n_lim=20, strain_limit=0.03, nu_dyn=nu_dyn,
+    # mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e10, nu=0.3)  # TODO: not working with the elastic model!!!
+    # nu_dyn = None
+    stress, strain, ppt, disps = run_ud_cdss(osi, mat, csr=csr, n_lim=20, strain_limit=0.03, nu_dyn=nu_dyn,
                                                 esig_v0=esig_v0, strain_inc=strain_inc, opyfile='ss.py')
 
     import matplotlib.pyplot as plt

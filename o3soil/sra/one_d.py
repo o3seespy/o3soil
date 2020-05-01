@@ -131,7 +131,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
                 if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
                     v_eff = sp.get_v_eff_stress_at_depth(y_depth)
-                    k0 = 1 - np.sin(sl.phi_r)
+                    k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
                     m_eff = v_eff * (1 + 2 * k0) / 3
                     p = m_eff  # Pa
                     overrides['d'] = 0.0
@@ -200,7 +200,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             soil_mats[i].update_to_nonlinear(osi)
     for ele in eles:
         mat = ele.mat
-        o3.set_parameter(osi, value=mat.dynamic_poissons_ratio, eles=[ele], args=['poissonRatio', 1])  # This depends on name of poisson's ratio variable
+        if hasattr(mat, 'set_nu'):
+            mat.set_nu(osi, mat.dynamic_poissons_ratio, eles=[ele])
     o3.analyze(osi, 40, 500.)
 
     # reset time and analysis
@@ -436,6 +437,7 @@ class O3SRAOutputs(object):
 
 
 def site_response_w_pysra(soil_profile, asig, odepths):
+    print('site_response_w_pysra -> deprecated: use liquepy.sra.run_pysra')
     import liquepy as lq
     import pysra
     pysra_profile = lq.sra.sm_profile_to_pysra(soil_profile, d_inc=[0.5] * soil_profile.n_layers)
