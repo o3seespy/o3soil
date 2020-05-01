@@ -31,14 +31,25 @@ def set_bnwf_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=True
     # use 10 springs - have the exterior spring
     w = fd.width
     pos = np.linspace(w / 20, fd.width - w / 20, n_springs) - fd.width / 2
+    if dettach:
+        k_ten = 1.0e-5 * k_spring
+    else:
+        k_ten = k_spring
     if not soil_nl:
-        int_spring_mat = o3.uniaxial_material.Elastic(osi, k_spring, eneg=0.001)  # TODO: dettachable
-        ext_spring_mat = o3.uniaxial_material.Elastic(osi, r_k * k_spring, eneg=0.001)
+        int_spring_mat = o3.uniaxial_material.Elastic(osi, k_ten, eneg=k_spring)  # TODO: dettachable
+        ext_spring_mat = o3.uniaxial_material.Elastic(osi, r_k * k_ten, eneg=r_k * k_spring)
     else:
         q_ult = gf.capacity_salgado_2008(sl, fd)
         q_spring = q_ult / 4  # TODO: should exterior be different?
-        int_spring_mat = o3.uniaxial_material.Steel01(osi, q_spring, k_spring, b=0.0)
-        ext_spring_mat = o3.uniaxial_material.Steel01(osi, q_spring, r_k * k_spring, b=0.0)
+        int_spring_mat_1 = o3.uniaxial_material.Steel02(osi, q_spring, k_spring, b=0.05, params=[10, 0.925, 0.15])
+        ext_spring_mat_1 = o3.uniaxial_material.Steel02(osi, q_spring, r_k * k_spring, b=0.05, params=[10, 0.925, 0.15])
+        if dettach:
+            mat_obj2 = o3.uniaxial_material.Elastic(osi, 0.0001 * k_spring, eneg=k_spring * 1000)
+            int_spring_mat = o3.uniaxial_material.Series(osi, [int_spring_mat_1, mat_obj2])
+            ext_spring_mat = o3.uniaxial_material.Series(osi, [ext_spring_mat_1, mat_obj2])
+        else:
+            int_spring_mat = int_spring_mat_1
+            ext_spring_mat = ext_spring_mat_1
     spring_mats = 3 * [ext_spring_mat] + 4 * [int_spring_mat] + 3 * [ext_spring_mat]
     scaler = np.ones_like(pos)
     # scaler[:3] = r_k
@@ -126,7 +137,7 @@ def run_example():
     iz = bd.k_eff * height ** 3 / (3 * e_mod)
     ele_nodes = [bot_node, top_node]
 
-    ele = o3.element.ElasticBeamColumn2D(osi, ele_nodes, area=area, e_mod=e_mod, iz=iz, transf=transf)
+    vert_ele = o3.element.ElasticBeamColumn2D(osi, ele_nodes, area=area, e_mod=e_mod, iz=iz, transf=transf)
 
     # TODO: if sl.g_mod is stress dependent, then account for foundation load and depth increase using pg2-18 of NIST
     # TODO: Implement the stiffness using soil_profile into geofound that accounts for fd.q_load
@@ -144,9 +155,6 @@ def run_example():
     print('response_period: ', response_period)
     beta_k = 2 * bd.xi / angular_freq
     o3.rayleigh.Rayleigh(osi, alpha_m=0.0, beta_k=beta_k, beta_k_init=0.0, beta_k_comm=0.0)
-    # ts0 = o3.time_series.Path(osi, time=[0, 1000, 1e10],
-    #                           values=[0, 1, 1], factor=1)
-    # pat0 = o3.pattern.Plain(osi, ts0)
     ts0 = o3.time_series.Linear(osi, factor=1)
     o3.pattern.Plain(osi, ts0)
     o3.Load(osi, top_node, [0, -bd.mass_eff * 9.8, 0])
@@ -164,21 +172,12 @@ def run_example():
     o3.analysis.Static(osi)
     o3.analyze(osi, num_inc=n_steps_gravity)
     o3.load_constant(osi, time=0.0)
-    # o3.wipe_analysis(osi)
     print('init_disp: ', o3.get_node_disp(osi, bot_node, o3.cc.DOF2D_Y))
-    o3.gen_reactions(osi)
-    print('node disps')
-    for node in bnwf.top_nodes:
-        print(o3.get_node_disp(osi, node, o3.cc.DOF2D_Y))
-    print('node react')
-    for node in bnwf.bot_nodes:
-        print(o3.get_node_reaction(osi, node, o3.cc.DOF2D_Y))
-
 
     # Start horizontal load
     ts0 = o3.time_series.Linear(osi, factor=1)
     o3.pattern.Plain(osi, ts0)
-    o3.Load(osi, top_node, [bd.mass_eff * 2, 0, 0])
+    o3.Load(osi, top_node, [bd.mass_eff * 2.5, 0, 0])
     o3.constraints.Transformation(osi)
     o3.test_check.NormDispIncr(osi, tol=1.0e-6, max_iter=35, p_flag=0)
     o3.algorithm.Newton(osi)
@@ -194,6 +193,8 @@ def run_example():
     for i in range(n_steps_hload):
         o3.analyze(osi, num_inc=1)
         rot.append(o3.get_node_disp(osi, top_node, o3.cc.DOF2D_X))
+        o3.gen_reactions(osi)
+        mom.append(o3.get_ele_response(osi, vert_ele, 'force')[2])
 
     o3.gen_reactions(osi)
     print('node disps')
@@ -204,7 +205,7 @@ def run_example():
         print(o3.get_node_reaction(osi, node, o3.cc.DOF2D_Y))
 
     import matplotlib.pyplot as plt
-    plt.plot(rot)
+    plt.plot(rot, mom)
     plt.show()
 
 if __name__ == '__main__':
