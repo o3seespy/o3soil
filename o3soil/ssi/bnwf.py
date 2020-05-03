@@ -3,7 +3,29 @@ import o3seespy as o3
 import numpy as np
 
 
-def set_bnwf_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=True, soil_nl=True):
+def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=True, soil_nl=True):
+    """
+    Set a Beam on nonlinear Winker Foundation between two nodes
+
+    Parameters
+    ----------
+    osi
+    sl: sfsimodels.Soil object
+    fd: sfsimodels.Foundation object
+    soil_node: o3.Node
+        The soil node
+    bd_node: o3.Node
+        The base of the building node
+    axis: str
+        The axis which the foundation would rotate around
+    dettach
+    soil_nl
+
+    Returns
+    -------
+
+    """
+    # TODO: account for foundation height
     end_zone_ratio = 0.3  # TODO: currently based on 0.3, but Harden et al. (2005) showed this to be a ratio of B/L
     k_rot = gf.stiffness.calc_rotational_via_gazetas_1991(sl, fd, axis=axis)
     k_vert = gf.stiffness.calc_vert_via_gazetas_1991(sl, fd)
@@ -40,9 +62,10 @@ def set_bnwf_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=True
         ext_spring_mat = o3.uniaxial_material.Elastic(osi, r_k * k_spring, eneg=r_k * k_ten)
     else:
         q_ult = gf.capacity_salgado_2008(sl, fd)
-        q_spring = q_ult / 4  # TODO: should exterior be different? -should be divide by 10
-        int_spring_mat_1 = o3.uniaxial_material.Steel02(osi, q_spring, k_spring, b=0.05, params=[10, 0.925, 0.15])
-        ext_spring_mat_1 = o3.uniaxial_material.Steel02(osi, q_spring, r_k * k_spring, b=0.05, params=[10, 0.925, 0.15])
+        f_ult = q_ult * fd.area
+        f_spring = f_ult / n_springs / 2  # TODO: should exterior be different? -should be divide by n_springs
+        int_spring_mat_1 = o3.uniaxial_material.Steel02(osi, f_spring, k_spring, b=0.05, params=[5, 0.925, 0.15])
+        ext_spring_mat_1 = o3.uniaxial_material.Steel02(osi, f_spring, r_k * k_spring, b=0.05, params=[5, 0.925, 0.15])
         if dettach:
             mat_obj2 = o3.uniaxial_material.Elastic(osi, 1000 * k_spring, eneg=0.0001 * k_spring)
             int_spring_mat = o3.uniaxial_material.Series(osi, [int_spring_mat_1, mat_obj2])
@@ -192,7 +215,7 @@ def run_example():
     mom = []
     for i in range(n_steps_hload):
         o3.analyze(osi, num_inc=1)
-        rot.append(o3.get_node_disp(osi, top_node, o3.cc.DOF2D_X))
+        rot.append(o3.get_node_disp(osi, bot_node, o3.cc.DOF2D_ROTZ))
         o3.gen_reactions(osi)
         mom.append(o3.get_ele_response(osi, vert_ele, 'force')[2])
 
