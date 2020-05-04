@@ -173,8 +173,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         # def element
         for xx in range(nx):
             nodes = [sn[i+1][xx], sn[i+1][xx + 1], sn[i][xx + 1], sn[i][xx]]  # anti-clockwise
-            eles.append(o3.element.Quad(osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=-grav * unit_masses[i]))
-            #eles.append(o3.element.SSPquad(osi, nodes, mat, o3.cc.PLANE_STRAIN, ele_thick, 0.0, grav * unit_masses[i]))
+            #eles.append(o3.element.Quad(osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=-grav * unit_masses[i]))
+            eles.append(o3.element.SSPquad(osi, nodes, mat, o3.cc.PLANE_STRAIN, ele_thick, 0.0, -grav * unit_masses[i]))
 
     if base_imp >= 0:
         # define material and element for viscous dampers
@@ -201,7 +201,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     for ele in eles:
         mat = ele.mat
         if hasattr(mat, 'set_nu'):
-            mat.set_nu(osi, mat.dynamic_poissons_ratio, eles=[ele])
+            mat.set_nu(mat.dynamic_poissons_ratio, eles=[ele])
     o3.analyze(osi, 40, 500.)
 
     # reset time and analysis
