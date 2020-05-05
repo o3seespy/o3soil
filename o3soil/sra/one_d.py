@@ -8,7 +8,7 @@ import os
 
 
 def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  rec_dt=None, base_imp=0, cache_path=None, pload=0.0, opfile=None):
+                  rec_dt=None, base_imp=0, cache_path=None, opfile=None):
     """
     Run seismic analysis of a soil profile - example based on:
     http://opensees.berkeley.edu/wiki/index.php/Site_Response_Analysis_of_a_Layered_Soil_Column_(Total_Stress_Analysis)
@@ -224,7 +224,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     o3.analysis.Transient(osi)
     o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
 
-    if pload:
+    if hasattr(sp, 'hloads'):
+        pload = sp.hloads[0].p_x
         static_time = 100
         print('time: ', o3.get_time(osi))
         # Add static stress bias
