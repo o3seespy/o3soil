@@ -173,7 +173,7 @@ class SRA1D(object):
         self.o3res.ele2node_tags = o3.get_all_ele_node_tags_as_dict(self.osi)
         self.o3res.mat2ele_tags = []
         for ele in self.eles:
-            self.o3res.mat2ele_tags.append([ele.tag, ele.mat.tag])
+            self.o3res.mat2ele_tags.append([ele.mat.tag, ele.tag])
 
     def execute_static(self):
         # Static analysis
@@ -580,13 +580,13 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     out_dict = o3sra_outs.results_to_dict()
 
     if cache_path:
-        import o3_plot
+        import o3plot
         o3sra_outs.cache_path = cache_path
         o3sra_outs.results_to_files()
-        o3res = o3_plot.O3Results()
+        o3res = o3.results.Results2D()
         o3res.cache_path = cache_path
         o3res.coords = coords
-        o3res.ele_node_tags = ele_node_tags
+        o3res.ele2node_tags = ele_node_tags
         o3res.x_disp = all_node_xdisp_rec.collect()
         o3res.y_disp = all_node_ydisp_rec.collect()
         o3res.save_to_cache()
