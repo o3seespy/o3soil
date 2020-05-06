@@ -37,18 +37,18 @@ class Window(pg.GraphicsWindow):  # TODO: consider switching to pandas.read_csv(
         return list(self.ele_node_tags)[::-1]
 
 
-    def init_model(self, coords, ele_node_tags=None):
+    def init_model(self, coords, ele2node_tags=None):
         self.x_coords = np.array(coords)[:, 0]
         self.y_coords = np.array(coords)[:, 1]
 
-        if ele_node_tags is not None:
+        if ele2node_tags is not None:
 
-            self.ele_node_tags = ele_node_tags
-            rnt = self.get_reverse_ele_node_tags()
+            self.ele2node_tags = ele2node_tags
+            rnt = self.get_reverse_ele2node_tags()
             for nl in rnt:
-                self.ele_node_tags[nl] = np.array(self.ele_node_tags[nl], dtype=int)
-                ele_x_coords = self.x_coords[self.ele_node_tags[nl] - 1]
-                ele_y_coords = self.y_coords[self.ele_node_tags[nl] - 1]
+                self.ele2node_tags[nl] = np.array(self.ele2node_tags[nl], dtype=int)
+                ele_x_coords = self.x_coords[self.ele2node_tags[nl] - 1]
+                ele_y_coords = self.y_coords[self.ele2node_tags[nl] - 1]
                 ele_x_coords = np.insert(ele_x_coords, len(ele_x_coords[0]), ele_x_coords[:, 0], axis=1)
                 ele_y_coords = np.insert(ele_y_coords, len(ele_y_coords[0]), ele_y_coords[:, 0], axis=1)
                 connect = np.ones_like(ele_x_coords, dtype=np.ubyte)

@@ -169,9 +169,8 @@ class SRA1D(object):
         self.o3res = o3.results.Results2D()
         self.o3res.cache_path = self.cache_path
         node_coords = o3.get_all_node_coords(self.osi)
-        ele_node_tags = o3.get_all_ele_node_tags_as_dict(self.osi)
         self.o3res.coords = node_coords
-        self.o3res.ele_node_tags = ele_node_tags
+        self.o3res.ele2node_tags = o3.get_all_ele_node_tags_as_dict(self.osi)
 
     def execute_static(self):
         # Static analysis
