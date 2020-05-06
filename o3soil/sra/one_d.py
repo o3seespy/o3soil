@@ -165,11 +165,10 @@ class SRA1D(object):
             c_base = self.ele_width * base_imp / 1e3
             dashpot_mat = o3.uniaxial_material.Viscous(self.osi, c_base, alpha=1.)
             o3.element.ZeroLength(self.osi, [dashpot_node_l, dashpot_node_2], mats=[dashpot_mat], dirs=[o3.cc.DOF2D_X])
-        import o3_plot
-        self.o3res = o3.results.Results2D()
-        self.o3res.cache_path = self.cache_path
-        node_coords = o3.get_all_node_coords(self.osi)
-        self.o3res.coords = node_coords
+
+        self.o3res = o3.results.Results2D(cache_path=self.cache_path)
+        self.o3res.wipe_old_files()
+        self.o3res.coords = o3.get_all_node_coords(self.osi)
         self.o3res.ele2node_tags = o3.get_all_ele_node_tags_as_dict(self.osi)
         self.o3res.mat2ele_tags = []
         for ele in self.eles:
@@ -239,8 +238,9 @@ class SRA1D(object):
         o3.load_constant(self.osi, time=0)
 
     def execute_dynamic(self, asig, analysis_dt=0.001, ray_freqs=(0.5, 10), xi=0.03, analysis_time=None,
-                        outs=None, rec_dt=None, playback=True):
+                        outs=None, rec_dt=None, playback_dt=None, playback=True):
         self.rec_dt = rec_dt
+        self.playback_dt = playback_dt
         if rec_dt is None:
             self.rec_dt = asig.dt
         o3.set_time(self.osi, 0.0)
@@ -263,8 +263,10 @@ class SRA1D(object):
 
         init_time = o3.get_time(self.osi)
         if playback:
-            all_node_xdisp_rec = o3.recorder.NodesToArrayCache(self.osi, 'all', [o3.cc.DOF2D_X], 'disp', nsd=4)
-            all_node_ydisp_rec = o3.recorder.NodesToArrayCache(self.osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
+            self.o3res.dynamic = True
+            self.o3res.start_recorders(self.osi, dt=self.playback_dt)
+        else:
+            self.o3res.dynamic = False
         self.o3sra_outs = O3SRAOutputs()
         self.o3sra_outs.start_recorders(self.osi, outs, self.sn, self.eles, rec_dt=self.rec_dt)
 
@@ -279,18 +281,13 @@ class SRA1D(object):
         if self.state == 3:
             o3.extensions.to_py_file(self.osi, self.opfile)
         # Run the dynamic motion
+        o3.record(self.osi)
         while o3.get_time(self.osi) - init_time < analysis_time:
             if o3.analyze(self.osi, 1, analysis_dt):
                 print('failed')
                 break
         o3.wipe(self.osi)
         self.out_dict = self.o3sra_outs.results_to_dict()
-
-        if playback:
-            self.o3res.x_disp = all_node_xdisp_rec.collect()
-            self.o3res.y_disp = all_node_ydisp_rec.collect()
-        else:
-            self.o3res.dynamic = False
 
         if self.cache_path:
             import o3_plot
@@ -307,7 +304,7 @@ def run_sra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, a
     if hasattr(sra_1d.sp, 'hloads'):
         sra_1d.apply_loads()
     sra_1d.execute_dynamic(asig, analysis_dt=analysis_dt, ray_freqs=ray_freqs, xi=xi, analysis_time=analysis_time,
-                           outs=outs, playback=playback)
+                           outs=outs, playback=playback, playback_dt=0.01)
     return sra_1d
 
 
