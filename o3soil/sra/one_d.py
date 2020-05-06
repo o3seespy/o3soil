@@ -15,7 +15,7 @@ class SRA1D(object):
         sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
         thicknesses = sp.split["thickness"]
         self.n_node_rows = len(thicknesses) + 1
-        node_depths = np.cumsum(sp.split["thickness"])
+        node_depths = -np.cumsum(sp.split["thickness"])
         self.node_depths = np.insert(node_depths, 0, 0)
         self.ele_depths = (self.node_depths[1:] + self.node_depths[:-1]) / 2
         self.unit_masses = sp.split["unit_mass"] / 1e3
@@ -47,7 +47,7 @@ class SRA1D(object):
         # sn = [[o3.node.Node(osi, ele_width * j, 0) for j in range(nx + 1)]]
         for i in range(0, self.n_node_rows):
             # Establish left and right nodes
-            sn.append([o3.node.Node(self.osi, self.ele_width * j, -self.node_depths[i]) for j in range(nx + 1)])
+            sn.append([o3.node.Node(self.osi, self.ele_width * j, self.node_depths[i]) for j in range(nx + 1)])
             # set x and y dofs equal for left and right nodes
             if i != self.n_node_rows - 1:
                 o3.EqualDOF(self.osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
@@ -63,8 +63,8 @@ class SRA1D(object):
                 o3.Fix2DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED)
 
             # Define dashpot nodes
-            dashpot_node_l = o3.node.Node(self.osi, 0, -self.node_depths[-1])
-            dashpot_node_2 = o3.node.Node(self.osi, 0, -self.node_depths[-1])
+            dashpot_node_l = o3.node.Node(self.osi, 0, self.node_depths[-1])
+            dashpot_node_2 = o3.node.Node(self.osi, 0, self.node_depths[-1])
             o3.Fix2DOF(self.osi, dashpot_node_l, o3.cc.FIXED, o3.cc.FIXED)
             o3.Fix2DOF(self.osi, dashpot_node_2, o3.cc.FREE, o3.cc.FIXED)
 
@@ -84,7 +84,7 @@ class SRA1D(object):
         for i in range(len(self.ele_depths)):
             y_depth = self.ele_depths[i]
 
-            sl_id = self.sp.get_layer_index_by_depth(y_depth)
+            sl_id = self.sp.get_layer_index_by_depth(-y_depth)
             sl = self.sp.layer(sl_id)
 
             app2mod = {}
@@ -198,8 +198,13 @@ class SRA1D(object):
         o3.wipe_analysis(self.osi)
         self.o3res.coords = o3.get_all_node_coords(self.osi)
 
-    def get_nearest_node_at_depth(self, depth):
-        return int(np.round(np.interp(depth, self.node_depths, np.arange(len(self.node_depths)))))
+    def get_nearest_node_layer_at_depth(self, depth):
+        # Convert to positive since node depths go downwards
+        return int(np.round(np.interp(-depth, -self.node_depths, np.arange(len(self.node_depths)))))
+
+    def get_nearest_ele_layer_at_depth(self, depth):
+        # Convert to positive since ele depths go downwards
+        return int(np.round(np.interp(-depth, -self.ele_depths, np.arange(len(self.ele_depths)))))
 
     def apply_loads(self):
         o3.set_time(self.osi, 0.0)
@@ -225,7 +230,8 @@ class SRA1D(object):
         for i in range(len(self.sp.hloads)):
             pload = self.sp.hloads[i].p_x
             y = -self.sp.hloads[i].y
-            ind = self.get_nearest_node_at_depth(y)
+            ind = self.get_nearest_node_layer_at_depth(y)
+            print(i, y, ind)
             if self.sp.loads_are_stresses:
                 pload *= self.ele_width
             o3.Load(self.osi, self.sn[ind][0], [pload, 0])
