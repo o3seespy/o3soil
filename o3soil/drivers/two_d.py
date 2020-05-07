@@ -11,6 +11,9 @@ def run_2d_stress_driver(osi, base_mat, esig_v0, forces, d_step=0.001, max_steps
     if k0_init != 1:
         raise ValueError('Only supports k0=1')
     max_steps_per_half_cycle = 50000
+    if osi is None:
+        osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
+        base_mat.build(osi)
 
     nodes = [
         o3.node.Node(osi, 0.0, 0.0),
@@ -97,6 +100,9 @@ def run_2d_strain_driver_iso(osi, base_mat, esig_v0, disps, target_d_inc=0.00001
     if not np.isclose(k0_init, 1., rtol=0.05):
         raise ValueError(f'Only supports k0=1, current k0={k0_init:.3f}')
     max_steps_per_half_cycle = 50000
+    if osi is None:
+        osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
+        base_mat.build(osi)
 
     nodes = [
         o3.node.Node(osi, 0.0, 0.0),
@@ -171,6 +177,10 @@ def run_2d_strain_driver_iso(osi, base_mat, esig_v0, disps, target_d_inc=0.00001
 
 
 def run_2d_strain_driver(osi, mat, esig_v0, disps, target_d_inc=0.00001, handle='silent', verbose=0):
+    if osi is None:
+        osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
+        base_mat.build(osi)
+
     k0 = 1.0
     pois = k0 / (1 + k0)
     damp = 0.05
