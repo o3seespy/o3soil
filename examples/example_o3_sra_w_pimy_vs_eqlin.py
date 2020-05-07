@@ -10,8 +10,9 @@ import json
 
 
 def run():
+    # Define the soil layers using the sfsimodels package
     sl = sm.Soil()
-    sl.type = 'pimy'
+    sl.type = 'pimy'  # set type to be recognised by o3soil package
     vs = 160.
     unit_mass = 1700.0
     sl.cohesion = 58.0e3
@@ -48,26 +49,28 @@ def run():
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
     soil_profile.add_layer(9.5, sl)
     soil_profile.height = 20.0
+
+    # Export the soil profile to json
     ecp_out = sm.Output()
     ecp_out.add_to_dict(soil_profile)
-    ofile = open('ecp.json', 'w')
-    ofile.write(json.dumps(ecp_out.to_dict(), indent=4))
-    ofile.close()
+    ecp_out.to_file('ecp.json')
+    # Reload the json file to demonstrate save/load capability
     mods = sm.load_json('ecp.json', default_to_base=True)
     soil_profile = mods['soil_profile'][1]
 
-    record_filename = 'short_motion_dt0p01.txt'
-    in_sig = eqsig.load_asig(TEST_DATA_DIR + record_filename, m=0.2)
+    # Load the ground motion as an eqsig.AccSignal object
+    in_sig = eqsig.load_asig(TEST_DATA_DIR + 'short_motion_dt0p01.txt', m=0.2)
 
-    # linear analysis with pysra
+    # run equivalent linear analysis with pysra - using the liquepy package
     od = lq.sra.run_pysra(soil_profile, in_sig, odepths=np.array([0.0, 2.0]))
+    # save surface acceleration as an eqsig.AccSignal object
     pysra_sig = eqsig.AccSignal(od['ACCX'][0], in_sig.dt)
 
-    outputs = o3soil.sra.site_response(soil_profile, in_sig)
+    # run a nonlinear analysis with o3seespy - using the o3soil package
+    outputs = o3soil.sra.site_response(soil_profile, in_sig, xi=0.02, freqs=(0.5, 5))
+    # save surface acceleration as an eqsig.AccSignal object
     resp_dt = outputs['time'][2] - outputs['time'][1]
     surf_sig = eqsig.AccSignal(outputs['ACCX'][0], resp_dt)
-
-    o3_surf_vals = np.interp(pysra_sig.time, surf_sig.time, surf_sig.values)
 
     show = 1
 
@@ -94,10 +97,10 @@ def run():
         pysra_h = pysra_sig.smooth_fa_spectrum / in_sig.smooth_fa_spectrum
         sps[2].plot(pysra_sig.smooth_fa_frequencies, pysra_h, c=cbox(1), ls='--')
         sps[2].axhline(1, c='k', ls='--')
-        # sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r', label='Error x10', lw=0.5)
         sps[0].legend()
         plt.show()
 
+    o3_surf_vals = np.interp(pysra_sig.time, surf_sig.time, surf_sig.values)
     assert np.isclose(o3_surf_vals, pysra_sig.values, atol=0.01, rtol=100).all()
 
 
