@@ -6,7 +6,6 @@ from tests.conftest import TEST_DATA_DIR
 
 # for linear analysis comparison
 import liquepy as lq
-import json
 
 
 def run():
