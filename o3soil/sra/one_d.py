@@ -206,7 +206,7 @@ class SRA1D(object):
         # Convert to positive since ele depths go downwards
         return int(np.round(np.interp(-depth, -self.ele_depths, np.arange(len(self.ele_depths)))))
 
-    def apply_loads(self):
+    def apply_loads(self, ray_freqs=(0.5, 10), xi=0.03):
         o3.set_time(self.osi, 0.0)
 
         # Define the dynamic analysis
@@ -218,9 +218,13 @@ class SRA1D(object):
         o3.numberer.RCM(self.osi)
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
         o3.analysis.Transient(self.osi)
-        # o3.rayleigh.Rayleigh(self.osi, self.a0, self.a1, 0, 0)
+        omega_1 = 2 * np.pi * ray_freqs[0]
+        omega_2 = 2 * np.pi * ray_freqs[1]
+        a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
+        a1 = 2 * xi / (omega_1 + omega_2)
+        o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
 
-        static_time = 100
+        static_time = 500
         print('time: ', o3.get_time(self.osi))
         # Add static stress bias
         time_series = o3.time_series.Path(self.osi, time=[0, static_time / 2, static_time, 1e3], values=[0, 0.5, 1, 1],
@@ -240,7 +244,7 @@ class SRA1D(object):
             o3.Load(self.osi, self.sn[-1][0], [-net_hload, 0])
 
         static_dt = 0.1
-        o3.analyze(self.osi, int(static_time / static_dt) * 1.5, static_dt)
+        o3.analyze(self.osi, int(static_time / static_dt), static_dt)
         o3.load_constant(self.osi, time=0)
 
     def execute_dynamic(self, asig, analysis_dt=0.001, ray_freqs=(0.5, 10), xi=0.03, analysis_time=None,
@@ -249,6 +253,8 @@ class SRA1D(object):
         self.playback_dt = playback_dt
         if rec_dt is None:
             self.rec_dt = asig.dt
+        if playback_dt is None:
+            self.playback_dt = asig.dt
         o3.set_time(self.osi, 0.0)
 
         # Define the dynamic analysis
@@ -291,7 +297,8 @@ class SRA1D(object):
         while o3.get_time(self.osi) - init_time < analysis_time:
             if o3.analyze(self.osi, 1, analysis_dt):
                 print('failed')
-                break
+                if o3.analyze(self.osi, 10, analysis_dt / 10):
+                    break
         o3.wipe(self.osi)
         self.out_dict = self.o3sra_outs.results_to_dict()
 
