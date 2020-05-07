@@ -140,12 +140,12 @@ class SRA1D(object):
                     overrides['p_ref'] = p / 1e3
                     overrides['g_mod_ref'] = g_mod_r
                     overrides['bulk_mod_ref'] = b_mod
-                    if sl.type == 'pimy':
+                    if sl.o3_type == 'pimy':
                         overrides['cohesion'] = sl.cohesion / 1e3
                         sl_class = o3.nd_material.PressureIndependMultiYield
-                    elif sl.type == 'pdmy':
+                    elif sl.o3_type == 'pdmy':
                         sl_class = o3.nd_material.PressureDependMultiYield
-                    elif sl.type == 'pdmy02':
+                    elif sl.o3_type == 'pdmy02':
                         sl_class = o3.nd_material.PressureDependMultiYield02
                 else:
                     sl_class = o3.nd_material.ElasticIsotropic

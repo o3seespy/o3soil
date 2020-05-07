@@ -16,55 +16,64 @@ class O3SRAOutputs(object):
         self.sn_xy = sn_xy
         if sn_xy:
             self.nodes = sn[0, :]
+            f_order = 'F'
         else:
             self.nodes = sn[:, 0]
+            f_order = 'C'
         self.outs = outs
         node_depths = np.array([node.y for node in sn[:, 0]])
         ele_depths = (node_depths[1:] + node_depths[:-1]) / 2
-        ods = {}
+        rd = {}
+        srd = {}
         for otype in outs:
             if otype in ['ACCX', 'DISPX']:
                 if isinstance(outs[otype], str) and outs[otype] == 'all':
 
                     if otype == 'ACCX':
-                        ods['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.X], res_type='accel',
+                        rd['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_Y], res_type='accel',
                                                                 dt=rec_dt)
                     if otype == 'DISPX':
-                        ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.X], res_type='disp',
+                        rd['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_X], res_type='disp',
                                                                 dt=rec_dt)
+                    # if otype == 'PP':
+                    #     ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_PP], res_type='UNKNONWN',
+                    #                                             dt=rec_dt)
                 else:
-                    ods['ACCX'] = []
+                    rd['ACCX'] = []
                     for i in range(len(outs['ACCX'])):
                         ind = np.argmin(abs(node_depths - outs['ACCX'][i]))
-                        ods['ACCX'].append(
+                        rd['ACCX'].append(
                             o3.recorder.NodeToArrayCache(osi, node=sn[ind][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt))
             if otype == 'TAU':
                 for ele in eles:
                     assert isinstance(ele, o3.element.SSPquad) or isinstance(ele, o3.element.SSPquadUP)
-                ods['TAU'] = []
+
                 if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
-                    ods['TAU'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
+                    srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
                 else:
-                    for i in range(len(outs['TAU'])):
-                        ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
-                        ods['TAU'].append(
-                            o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
+                    raise ValueError('Currently not supported')
+                    # rd['STRESS'] = []
+                    # for i in range(len(outs['TAU'])):
+                    #     ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
+                    #     rd['STRESS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
+            if otype == 'ESIGY':
+                if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
+                    if 'stress' not in srd:
+                        srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
+            if otype == 'STRS':
+                if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
+                    srd['strain'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
+                else:
+                    # rd['STRS'] = []
+                    raise ValueError('Currently not supported')
+                    # for i in range(len(outs['STRS'])):
+                    #     ind = np.argmin(abs(ele_depths - outs['STRS'][i]))
+                    #     rd['STRS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['strain'], dt=rec_dt))
             if otype == 'TAUX':
                 if isinstance(outs['TAUX'], str) and outs['TAUX'] == 'all':
-                    if sn_xy:
-                        order = 'F'
-                    else:
-                        order = 'C'
-                    ods['TAUX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn.flatten(order), dofs=[o3.cc.X], res_type='reaction',
-                                                                dt=rec_dt)
-            if otype == 'STRS':
-                ods['STRS'] = []
-                if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
-                    ods['STRS'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
-                else:
-                    for i in range(len(outs['STRS'])):
-                        ind = np.argmin(abs(ele_depths - outs['STRS'][i]))
-                        ods['STRS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['strain'], dt=rec_dt))
+                    rd['TAUX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn.flatten(f_order), dofs=[o3.cc.X],
+                                                               res_type='reaction',
+                                                               dt=rec_dt)
             if otype == 'STRSX':
                 if isinstance(outs['STRSX'], str) and outs['STRSX'] == 'all':
                     if 'DISPX' in outs:
@@ -73,10 +82,11 @@ class O3SRAOutputs(object):
                         nodes = sn[0, :]
                     else:
                         nodes = sn[:, 0]
-                    ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=nodes, dofs=[o3.cc.X], res_type='disp',
+                    rd['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=nodes, dofs=[o3.cc.X], res_type='disp',
                                                                 dt=rec_dt)
 
-        self.ods = ods
+        self.rd = rd
+        self.srd = srd
 
     def results_to_files(self):
         od = self.results_to_dict()
@@ -99,55 +109,63 @@ class O3SRAOutputs(object):
         import pandas as pd
         df = pd.read_csv(ro)
         if self.outs is None:
-            items = list(self.ods)
+            raise ValueError('outs is None')
+            # items = list(self.rd)
         else:
             items = list(self.outs)
+
         if self.out_dict is None:
             self.out_dict = {}
+            for item in self.srd:
+                print('run collect: ', item)
+                self.srd[item] = self.srd[item].collect().T
             for otype in items:
-                if otype not in self.ods:
+                if otype not in self.rd:
+                    if otype == 'TAU':
+                        rname = 'stress'
+                        ostr = 'sxy'
+                    elif otype == 'ESIGY':
+                        rname = 'stress'
+                        ostr = 'syy'
+                    else:
+                        rname = 'strain'
+                        ostr = 'gxy'
+                    dfe = df[df['recorder'] == rname]
+                    vals = self.srd[rname]
+                    cur_ind = 0
+                    self.out_dict[otype] = []
+                    if otype in ['TAU', 'STRS', 'ESIGY']:
+                        for ele in self.eles:
+                            mat_type = ele.mat.type
+                            form = 'PlaneStrain'
+                            dfm = dfe[(dfe['mat'] == mat_type) & (dfe['form'] == form)]
+                            assert len(dfm) == 1, len(dfm)
+                            outs = dfm['outs'].iloc[0].split('-')
+                            oind = outs.index(ostr)
+                            self.out_dict[otype].append(vals[cur_ind + oind])
+                            cur_ind += len(outs)
+                        self.out_dict[otype] = np.array(self.out_dict[otype])
                     if otype == 'STRSX':
                         depths = []
                         for node in self.nodes:
                             depths.append(node.y)
                         depths = np.array(depths)
                         d_incs = depths[1:] - depths[:-1]
-                        vals = self.ods['DISPX'].collect(unlink=False).T
+                        vals = self.rd['DISPX'].collect(unlink=False).T
                         self.out_dict[otype] = (vals[1:] - vals[:-1]) / d_incs[:, np.newaxis]
-                elif isinstance(self.ods[otype], list):
-                    self.out_dict[otype] = []
-                    for i in range(len(self.ods[otype])):
-                        if otype in ['TAU', 'STRS']:
-                            self.out_dict[otype].append(self.ods[otype][i].collect()[2])
-                        else:
-                            self.out_dict[otype].append(self.ods[otype][i].collect())
-                    self.out_dict[otype] = np.array(self.out_dict[otype])
+                # elif isinstance(self.rd[otype], list):
+                #     self.out_dict[otype] = []
+                #     for i in range(len(self.rd[otype])):
+                #         if otype in ['TAU', 'STRS']:
+                #             self.out_dict[otype].append(self.rd[otype][i].collect()[2])
+                #         else:
+                #             self.out_dict[otype].append(self.rd[otype][i].collect())
+                #     self.out_dict[otype] = np.array(self.out_dict[otype])
                 else:
-                    vals = self.ods[otype].collect().T
+                    vals = self.rd[otype].collect().T
                     cur_ind = 0
                     self.out_dict[otype] = []
-                    if otype in ['TAU', 'STRS']:
-                        for ele in self.eles:
-                            mat_type = ele.mat.type
-                            form = 'PlaneStrain'
-                            dfe = df[(df['mat'] == mat_type) & (df['form'] == form)]
-                            if otype == 'TAU':
-                                dfe = dfe[dfe['recorder'] == 'stress']
-                                ostr = 'sxy'
-                            else:
-                                dfe = dfe[dfe['recorder'] == 'strain']
-                                ostr = 'gxy'
-                            assert len(dfe) == 1, len(dfe)
-                            outs = dfe['outs'].iloc[0].split('-')
-                            oind = outs.index(ostr)
-                            self.out_dict[otype].append(vals[cur_ind + oind])
-                            cur_ind += len(outs)
-                        self.out_dict[otype] = np.array(self.out_dict[otype])
-                        # if otype == 'STRS':
-                        #     self.out_dict[otype] = vals[2::3]  # Assumes pimy
-                        # elif otype == 'TAU':
-                        #     self.out_dict[otype] = vals[3::5]  # Assumes pimy
-                    elif otype == 'TAUX':
+                    if otype == 'TAUX':
                         f_static = -np.cumsum(vals[::2, :] - vals[1::2, :], axis=0)[:-1]  # add left and right
                         f_dyn = vals[::2, :] + vals[1::2, :]  # add left and right
                         f_dyn_av = (f_dyn[1:] + f_dyn[:-1]) / 2

@@ -15,7 +15,7 @@ def run(out_folder, dytime=None):
     gravity = 9.81
 
     sl = sm.Soil()
-    sl.type = 'pimy'
+    sl.o3_type = 'pimy'
     vs = 160.
     unit_mass = 1700.0
     sl.cohesion = 58.0e3
@@ -51,10 +51,10 @@ def run(out_folder, dytime=None):
 
     sl.permeability = 1.0e-5
     sl.p_atm = 101.0e3
-    # sp.add_layer(2, sl)
+    sp.add_layer(2, sl)
 
     sl = sm.Soil()
-    sl.type = 'pimy'
+    sl.o3_type = 'pimy'
     vs = 350.
     unit_mass = 1700.0
     sl.g_mod = vs ** 2 * unit_mass
@@ -88,15 +88,14 @@ def run(out_folder, dytime=None):
     outs = {
         'ACCX': 'all',
         'TAU': 'all',
-        'STRS': 'all'
+        'STRS': 'all',
+        'ESIGY': 'all'
     }
 
     show = 1
     if show:
         import matplotlib.pyplot as plt
         bf, sps = plt.subplots(nrows=3)
-        # TODO: Show loads on playback
-        # TODO: add material to playback, and show legend with material type, set material.__str__ as basetype, params[2:]
         sra1d = o3soil.sra.run_eff_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
                                    analysis_time=dytime, base_imp=-1, playback=True, opfile='run_pm.py')
         outputs = sra1d.out_dict
@@ -109,7 +108,7 @@ def run(out_folder, dytime=None):
         sps[0].plot(outputs["time"], outputs["TAU"][ind_3m], ls='--')
         sps[0].plot(outputs["time"], outputs["TAU"][ind_6m], ls='--', c='r')
         sps[0].plot(outputs["time"], outputs["TAU"][ind_12m], ls='--')
-        sps[2].plot(outputs["time"], outputs["STRS"][ind_6m], ls='--', c='r')
+        sps[2].plot(outputs["time"], outputs["ESIGY"][ind_6m], ls='--', c='r')
         sps[1].plot(outputs['STRS'][ind_6m], outputs['TAU'][ind_6m], c='r')
         # sps[1].plot(outputs['STRS'][3], sl.g_mod / 1e3 * outputs['STRS'][3], ls='--')
         # sps[2].plot(outputs["time"], outputs["ACCX"][5], ls='--')
@@ -123,7 +122,7 @@ if __name__ == '__main__':
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
         os.makedirs(out_folder)
-    run(dytime=4, out_folder=out_folder)
+    run(dytime=1, out_folder=out_folder)
     import o3seespy as o3
     o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
     o3res.load_from_cache()

@@ -192,7 +192,7 @@ class SRA1D(object):
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
         o3.analysis.Transient(self.osi)
         o3.analyze(self.osi, 10, 500.)
-        o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
+        # o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         for i in range(len(self.soil_mats)):
             if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
