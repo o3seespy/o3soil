@@ -5,6 +5,7 @@ import o3seespy as o3
 import o3seespy.extensions
 import copy
 import os
+from o3soil.sra.output import O3SRAOutputs
 
 
 class SRA1D(object):
@@ -50,17 +51,17 @@ class SRA1D(object):
             sn.append([o3.node.Node(self.osi, self.ele_width * j, self.node_depths[i]) for j in range(nx + 1)])
             # set x and y dofs equal for left and right nodes
             if i != self.n_node_rows - 1:
-                o3.EqualDOF(self.osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
+                o3.EqualDOF(self.osi, sn[i][0], sn[i][-1], [o3.cc.DOF2D_X, o3.cc.DOF2D_Y, o3.cc.DOF2D_PP])
         sn = np.array(sn)
 
         if self.base_imp < 0:
             # Fix base nodes
             for j in range(nx + 1):
-                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED, o3.cc.FREE)
+                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED, o3.cc.FIXED)  # Fixed pore pressure at base
         else:
             # Fix base nodes
             for j in range(nx + 1):
-                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED, o3.cc.FREE)
+                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED, o3.cc.FIXED)  # Fixed pore pressure at base
 
             # Define dashpot nodes
             self.osi.reset_model_params(2, ndf=2)
@@ -88,12 +89,11 @@ class SRA1D(object):
             sl_id = self.sp.get_layer_index_by_depth(-y_depth)
             sl = self.sp.layer(sl_id)
 
-            if sl.is_o3_mat:
-                if hasattr(sl, 'built') and sl.built:
+            if hasattr(sl, 'op_type'):
+                if sl.built:
                     pass
                 else:
                     sl.build(self.osi)
-                    sl.built = 1
                     mat = sl
                     self.soil_mats.append(mat)
             else:
@@ -109,15 +109,17 @@ class SRA1D(object):
                              # 'n_surf': 25
                              }
                 # Define material
-                if sl.type == 'pm4sand':
+                if not hasattr(sl, 'o3_type'):
+                    sl.o3_type = sl.type  # for backward compatibility
+                if sl.o3_type == 'pm4sand':
                     sl_class = o3.nd_material.PM4Sand
                     # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
                     app2mod = sl.app2mod
-                elif sl.type == 'sdmodel':
+                elif sl.o3_type == 'sdmodel':
                     sl_class = o3.nd_material.StressDensity
                     # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
                     app2mod = sl.app2mod
-                elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
+                elif sl.o3_type in ['pimy', 'pdmy', 'pdmy02']:
                     if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
                         if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
                             v_eff = self.sp.get_v_eff_stress_at_depth(y_depth)
@@ -167,8 +169,8 @@ class SRA1D(object):
                 # osi, ele_nodes, mat, thick, f_bulk, f_den, k1, k2, void, alpha, b1=0.0, b2=0.0
                 k_water = 2.2e6
                 a_sspquad_up = 6.0e-5
-                self.eles.append(o3.element.SSPquadUP(self.osi, nodes, mat, ele_thick, k_water, f_den=1.0, k1=sl.permeability / 1e3,
-                                                      k2=sl.permeability / 1e3, void=sl.e_curr, alpha=a_sspquad_up,
+                self.eles.append(o3.element.SSPquadUP(self.osi, nodes, mat, ele_thick, k_water, f_den=1.0, k1=sl.permeability,
+                                                      k2=sl.permeability, void=sl.e_curr, alpha=a_sspquad_up,
                                                       b2=-self.grav))
         self.sn = sn
         if self.base_imp >= 0:
@@ -340,196 +342,3 @@ def run_sra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, a
                            outs=outs, playback=playback, playback_dt=0.01)
     return sra_1d
 
-
-class O3SRAOutputs(object):
-    cache_path = ''
-    out_dict = None
-    area = 1.0
-    outs = None
-
-    def start_recorders(self, osi, outs, sn, eles, rec_dt, sn_xy=False):
-        self.rec_dt = rec_dt
-        self.eles = eles
-        self.sn_xy = sn_xy
-        if sn_xy:
-            self.nodes = sn[0, :]
-        else:
-            self.nodes = sn[:, 0]
-        self.outs = outs
-        node_depths = np.array([node.y for node in sn[:, 0]])
-        ele_depths = (node_depths[1:] + node_depths[:-1]) / 2
-        ods = {}
-        for otype in outs:
-            if otype in ['ACCX', 'DISPX']:
-                if isinstance(outs[otype], str) and outs[otype] == 'all':
-
-                    if otype == 'ACCX':
-                        ods['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.X], res_type='accel',
-                                                                dt=rec_dt)
-                    if otype == 'DISPX':
-                        ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.X], res_type='disp',
-                                                                dt=rec_dt)
-                else:
-                    ods['ACCX'] = []
-                    for i in range(len(outs['ACCX'])):
-                        ind = np.argmin(abs(node_depths - outs['ACCX'][i]))
-                        ods['ACCX'].append(
-                            o3.recorder.NodeToArrayCache(osi, node=sn[ind][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt))
-            if otype == 'TAU':
-                for ele in eles:
-                    assert isinstance(ele, o3.element.SSPquad) or isinstance(ele, o3.element.SSPquadUP)
-                ods['TAU'] = []
-                if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
-                    ods['TAU'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
-                else:
-                    for i in range(len(outs['TAU'])):
-                        ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
-                        ods['TAU'].append(
-                            o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
-            if otype == 'TAUX':
-                if isinstance(outs['TAUX'], str) and outs['TAUX'] == 'all':
-                    if sn_xy:
-                        order = 'F'
-                    else:
-                        order = 'C'
-                    ods['TAUX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn.flatten(order), dofs=[o3.cc.X], res_type='reaction',
-                                                                dt=rec_dt)
-            if otype == 'STRS':
-                ods['STRS'] = []
-                if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
-                    ods['STRS'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
-                else:
-                    for i in range(len(outs['STRS'])):
-                        ind = np.argmin(abs(ele_depths - outs['STRS'][i]))
-                        ods['STRS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['strain'], dt=rec_dt))
-            if otype == 'STRSX':
-                if isinstance(outs['STRSX'], str) and outs['STRSX'] == 'all':
-                    if 'DISPX' in outs:
-                        continue
-                    if sn_xy:
-                        nodes = sn[0, :]
-                    else:
-                        nodes = sn[:, 0]
-                    ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=nodes, dofs=[o3.cc.X], res_type='disp',
-                                                                dt=rec_dt)
-
-        self.ods = ods
-
-    def results_to_files(self):
-        od = self.results_to_dict()
-        for item in od:
-            ffp = self.cache_path + f'{item}.txt'
-            if os.path.exists(ffp):
-                os.remove(ffp)
-            np.savetxt(ffp, od[item])
-
-    def load_results_from_files(self, outs=None):
-        if outs is None:
-            outs = ['ACCX', 'TAU', 'STRS', 'time']
-        od = {}
-        for item in outs:
-            od[item] = np.loadtxt(self.cache_path + f'{item}.txt')
-        return od
-
-    def results_to_dict(self):
-        ro = o3.recorder.load_recorder_options()
-        import pandas as pd
-        df = pd.read_csv(ro)
-        if self.outs is None:
-            items = list(self.ods)
-        else:
-            items = list(self.outs)
-        if self.out_dict is None:
-            self.out_dict = {}
-            for otype in items:
-                if otype not in self.ods:
-                    if otype == 'STRSX':
-                        depths = []
-                        for node in self.nodes:
-                            depths.append(node.y)
-                        depths = np.array(depths)
-                        d_incs = depths[1:] - depths[:-1]
-                        vals = self.ods['DISPX'].collect(unlink=False).T
-                        self.out_dict[otype] = (vals[1:] - vals[:-1]) / d_incs[:, np.newaxis]
-                elif isinstance(self.ods[otype], list):
-                    self.out_dict[otype] = []
-                    for i in range(len(self.ods[otype])):
-                        if otype in ['TAU', 'STRS']:
-                            self.out_dict[otype].append(self.ods[otype][i].collect()[2])
-                        else:
-                            self.out_dict[otype].append(self.ods[otype][i].collect())
-                    self.out_dict[otype] = np.array(self.out_dict[otype])
-                else:
-                    vals = self.ods[otype].collect().T
-                    cur_ind = 0
-                    self.out_dict[otype] = []
-                    if otype in ['TAU', 'STRS']:
-                        for ele in self.eles:
-                            mat_type = ele.mat.type
-                            form = 'PlaneStrain'
-                            dfe = df[(df['mat'] == mat_type) & (df['form'] == form)]
-                            if otype == 'TAU':
-                                dfe = dfe[dfe['recorder'] == 'stress']
-                                ostr = 'sxy'
-                            else:
-                                dfe = dfe[dfe['recorder'] == 'strain']
-                                ostr = 'gxy'
-                            assert len(dfe) == 1, len(dfe)
-                            outs = dfe['outs'].iloc[0].split('-')
-                            oind = outs.index(ostr)
-                            self.out_dict[otype].append(vals[cur_ind + oind])
-                            cur_ind += len(outs)
-                        self.out_dict[otype] = np.array(self.out_dict[otype])
-                        # if otype == 'STRS':
-                        #     self.out_dict[otype] = vals[2::3]  # Assumes pimy
-                        # elif otype == 'TAU':
-                        #     self.out_dict[otype] = vals[3::5]  # Assumes pimy
-                    elif otype == 'TAUX':
-                        f_static = -np.cumsum(vals[::2, :] - vals[1::2, :], axis=0)[:-1]  # add left and right
-                        f_dyn = vals[::2, :] + vals[1::2, :]  # add left and right
-                        f_dyn_av = (f_dyn[1:] + f_dyn[:-1]) / 2
-                        # self.out_dict[otype] = (f[1:, :] - f[:-1, :]) / area
-                        self.out_dict[otype] = (f_dyn_av + f_static) / self.area
-                    else:
-                        self.out_dict[otype] = vals
-            # Create time output
-            if 'ACCX' in self.out_dict:
-                self.out_dict['time'] = np.arange(0, len(self.out_dict['ACCX'][0])) * self.rec_dt
-            elif 'TAU' in self.out_dict:
-                self.out_dict['time'] = np.arange(0, len(self.out_dict['TAU'][0])) * self.rec_dt
-        return self.out_dict
-
-
-def site_response_w_pysra(soil_profile, asig, odepths):
-    print('site_response_w_pysra -> deprecated: use liquepy.sra.run_pysra')
-    import liquepy as lq
-    import pysra
-    pysra_profile = lq.sra.sm_profile_to_pysra(soil_profile, d_inc=[0.5] * soil_profile.n_layers)
-    # Should be input in g
-    pysra_m = pysra.motion.TimeSeriesMotion(asig.label, None, time_step=asig.dt, accels=-asig.values / 9.8)
-
-    calc = pysra.propagation.EquivalentLinearCalculator()
-
-    od = {'ACCX': [], 'STRS': [], 'TAU': []}
-    outs = []
-    for i, depth in enumerate(odepths):
-        od['ACCX'].append(len(outs))
-        outs.append(pysra.output.AccelerationTSOutput(pysra.output.OutputLocation('within', depth=depth)))
-        od['STRS'].append(len(outs))
-        outs.append(pysra.output.StrainTSOutput(pysra.output.OutputLocation('within', depth=depth), in_percent=False))
-        od['TAU'].append(len(outs))
-        outs.append(pysra.output.StressTSOutput(pysra.output.OutputLocation('within', depth=depth),
-                                                normalized=False))
-    outputs = pysra.output.OutputCollection(outs)
-    calc(pysra_m, pysra_profile, pysra_profile.location('outcrop', depth=soil_profile.height))
-    outputs(calc)
-
-    out_series = {}
-    for mtype in od:
-        out_series[mtype] = []
-        for i in range(len(od[mtype])):
-            out_series[mtype].append(outputs[od[mtype][i]].values[:asig.npts])
-        out_series[mtype] = np.array(out_series[mtype])
-        if mtype == 'ACCX':
-            out_series[mtype] *= 9.8
-    return out_series

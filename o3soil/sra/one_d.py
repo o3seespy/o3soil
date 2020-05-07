@@ -1,10 +1,9 @@
 import numpy as np
 import sfsimodels as sm
-import openseespy.opensees as opy
 import o3seespy as o3
 import o3seespy.extensions
 import copy
-import os
+from o3soil.sra.output import O3SRAOutputs
 
 
 class SRA1D(object):
@@ -86,69 +85,78 @@ class SRA1D(object):
 
             sl_id = self.sp.get_layer_index_by_depth(-y_depth)
             sl = self.sp.layer(sl_id)
-
-            app2mod = {}
-            if y_depth > self.sp.gwl:
-                umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
+            if hasattr(sl, 'op_type'):
+                if sl.built:
+                    pass
+                else:
+                    sl.build(self.osi)
+                    mat = sl
+                    self.soil_mats.append(mat)
             else:
-                umass = sl.unit_dry_mass / 1e3
-            overrides = {'nu': pois, 'p_atm': 101,
-                         'rho': umass,
-                         'unit_moist_mass': umass,
-                         'nd': 2.0,
-                         # 'n_surf': 25
-                         }
-            # Define material
-            if sl.type == 'pm4sand':
-                sl_class = o3.nd_material.PM4Sand
-                # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-                app2mod = sl.app2mod
-            elif sl.type == 'sdmodel':
-                sl_class = o3.nd_material.StressDensity
-                # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-                app2mod = sl.app2mod
-            elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
-                if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
-                    if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
-                        v_eff = self.sp.get_v_eff_stress_at_depth(y_depth)
-                        k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
-                        m_eff = v_eff * (1 + 2 * k0) / 3
-                        p = m_eff  # Pa
-                        overrides['d'] = 0.0
+                app2mod = {}
+                if y_depth > self.sp.gwl:
+                    umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
+                else:
+                    umass = sl.unit_dry_mass / 1e3
+                overrides = {'nu': pois, 'p_atm': 101,
+                             'rho': umass,
+                             'unit_moist_mass': umass,
+                             'nd': 2.0,
+                             # 'n_surf': 25
+                             }
+                # Define material
+                if not hasattr(sl, 'o3_type'):
+                    sl.o3_type = sl.type  # for backward compatibility
+                if sl.o3_type == 'pm4sand':
+                    sl_class = o3.nd_material.PM4Sand
+                    # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
+                    app2mod = sl.app2mod
+                elif sl.o3_type == 'sdmodel':
+                    sl_class = o3.nd_material.StressDensity
+                    # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
+                    app2mod = sl.app2mod
+                elif sl.o3_type in ['pimy', 'pdmy', 'pdmy02']:
+                    if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
+                        if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
+                            v_eff = self.sp.get_v_eff_stress_at_depth(y_depth)
+                            k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
+                            m_eff = v_eff * (1 + 2 * k0) / 3
+                            p = m_eff  # Pa
+                            overrides['d'] = 0.0
+                        else:
+                            p = 101.0e3  # Pa
+                            overrides['d'] = sl.a
+                        g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / 1e3
                     else:
                         p = 101.0e3  # Pa
-                        overrides['d'] = sl.a
-                    g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / 1e3
+                        overrides['d'] = 0.0
+                        g_mod_r = sl.g_mod / 1e3
+
+                    b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
+                    overrides['p_ref'] = p / 1e3
+                    overrides['g_mod_ref'] = g_mod_r
+                    overrides['bulk_mod_ref'] = b_mod
+                    if sl.o3_type == 'pimy':
+                        overrides['cohesion'] = sl.cohesion / 1e3
+                        sl_class = o3.nd_material.PressureIndependMultiYield
+                    elif sl.o3_type == 'pdmy':
+                        sl_class = o3.nd_material.PressureDependMultiYield
+                    elif sl.o3_type == 'pdmy02':
+                        sl_class = o3.nd_material.PressureDependMultiYield02
                 else:
-                    p = 101.0e3  # Pa
-                    overrides['d'] = 0.0
-                    g_mod_r = sl.g_mod / 1e3
+                    sl_class = o3.nd_material.ElasticIsotropic
+                    sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
+                    overrides['nu'] = sl.poissons_ratio
+                    app2mod['rho'] = 'unit_moist_mass'
+                args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
 
-                b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
-                overrides['p_ref'] = p / 1e3
-                overrides['g_mod_ref'] = g_mod_r
-                overrides['bulk_mod_ref'] = b_mod
-                if sl.type == 'pimy':
-                    overrides['cohesion'] = sl.cohesion / 1e3
-                    sl_class = o3.nd_material.PressureIndependMultiYield
-                elif sl.type == 'pdmy':
-                    sl_class = o3.nd_material.PressureDependMultiYield
-                elif sl.type == 'pdmy02':
-                    sl_class = o3.nd_material.PressureDependMultiYield02
-            else:
-                sl_class = o3.nd_material.ElasticIsotropic
-                sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
-                overrides['nu'] = sl.poissons_ratio
-                app2mod['rho'] = 'unit_moist_mass'
-            args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
-
-            if o3.extensions.has_o3_model_changed(sl_class, prev_sl_class, args, prev_args, kwargs, prev_kwargs):
-                mat = sl_class(self.osi, *args, **kwargs)
-                prev_sl_class = sl_class
-                prev_args = copy.deepcopy(args)
-                prev_kwargs = copy.deepcopy(kwargs)
-                mat.dynamic_poissons_ratio = sl.poissons_ratio
-                self.soil_mats.append(mat)
+                if o3.extensions.has_o3_model_changed(sl_class, prev_sl_class, args, prev_args, kwargs, prev_kwargs):
+                    mat = sl_class(self.osi, *args, **kwargs)
+                    prev_sl_class = sl_class
+                    prev_args = copy.deepcopy(args)
+                    prev_kwargs = copy.deepcopy(kwargs)
+                    mat.dynamic_poissons_ratio = sl.poissons_ratio
+                    self.soil_mats.append(mat)
 
             # def element
             for xx in range(nx):
@@ -184,6 +192,7 @@ class SRA1D(object):
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
         o3.analysis.Transient(self.osi)
         o3.analyze(self.osi, 10, 500.)
+        o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         for i in range(len(self.soil_mats)):
             if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
@@ -303,7 +312,6 @@ class SRA1D(object):
         self.out_dict = self.o3sra_outs.results_to_dict()
 
         if self.cache_path:
-            import o3_plot
             self.o3sra_outs.cache_path = self.cache_path
             self.o3sra_outs.results_to_files()
             self.o3res.save_to_cache()
@@ -590,7 +598,6 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     out_dict = o3sra_outs.results_to_dict()
 
     if cache_path:
-        import o3plot
         o3sra_outs.cache_path = cache_path
         o3sra_outs.results_to_files()
         o3res = o3.results.Results2D()
@@ -602,165 +609,6 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         o3res.save_to_cache()
 
     return out_dict
-
-
-class O3SRAOutputs(object):
-    cache_path = ''
-    out_dict = None
-    area = 1.0
-    outs = None
-
-    def start_recorders(self, osi, outs, sn, eles, rec_dt, sn_xy=False):
-        self.rec_dt = rec_dt
-        self.eles = eles
-        self.sn_xy = sn_xy
-        if sn_xy:
-            self.nodes = sn[0, :]
-        else:
-            self.nodes = sn[:, 0]
-        self.outs = outs
-        node_depths = np.array([node.y for node in sn[:, 0]])
-        ele_depths = (node_depths[1:] + node_depths[:-1]) / 2
-        ods = {}
-        for otype in outs:
-            if otype in ['ACCX', 'DISPX']:
-                if isinstance(outs[otype], str) and outs[otype] == 'all':
-
-                    if otype == 'ACCX':
-                        ods['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.X], res_type='accel',
-                                                                dt=rec_dt)
-                    if otype == 'DISPX':
-                        ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.X], res_type='disp',
-                                                                dt=rec_dt)
-                else:
-                    ods['ACCX'] = []
-                    for i in range(len(outs['ACCX'])):
-                        ind = np.argmin(abs(node_depths - outs['ACCX'][i]))
-                        ods['ACCX'].append(
-                            o3.recorder.NodeToArrayCache(osi, node=sn[ind][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt))
-            if otype == 'TAU':
-                for ele in eles:
-                    assert isinstance(ele, o3.element.SSPquad)
-                ods['TAU'] = []
-                if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
-                    ods['TAU'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
-                else:
-                    for i in range(len(outs['TAU'])):
-                        ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
-                        ods['TAU'].append(
-                            o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
-            if otype == 'TAUX':
-                if isinstance(outs['TAUX'], str) and outs['TAUX'] == 'all':
-                    if sn_xy:
-                        order = 'F'
-                    else:
-                        order = 'C'
-                    ods['TAUX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn.flatten(order), dofs=[o3.cc.X], res_type='reaction',
-                                                                dt=rec_dt)
-            if otype == 'STRS':
-                ods['STRS'] = []
-                if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
-                    ods['STRS'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
-                else:
-                    for i in range(len(outs['STRS'])):
-                        ind = np.argmin(abs(ele_depths - outs['STRS'][i]))
-                        ods['STRS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['strain'], dt=rec_dt))
-            if otype == 'STRSX':
-                if isinstance(outs['STRSX'], str) and outs['STRSX'] == 'all':
-                    if 'DISPX' in outs:
-                        continue
-                    if sn_xy:
-                        nodes = sn[0, :]
-                    else:
-                        nodes = sn[:, 0]
-                    ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=nodes, dofs=[o3.cc.X], res_type='disp',
-                                                                dt=rec_dt)
-
-        self.ods = ods
-
-    def results_to_files(self):
-        od = self.results_to_dict()
-        for item in od:
-            ffp = self.cache_path + f'{item}.txt'
-            if os.path.exists(ffp):
-                os.remove(ffp)
-            np.savetxt(ffp, od[item])
-
-    def load_results_from_files(self, outs=None):
-        if outs is None:
-            outs = ['ACCX', 'TAU', 'STRS', 'time']
-        od = {}
-        for item in outs:
-            od[item] = np.loadtxt(self.cache_path + f'{item}.txt')
-        return od
-
-    def results_to_dict(self):
-        ro = o3.recorder.load_recorder_options()
-        import pandas as pd
-        df = pd.read_csv(ro)
-        if self.outs is None:
-            items = list(self.ods)
-        else:
-            items = list(self.outs)
-        if self.out_dict is None:
-            self.out_dict = {}
-            for otype in items:
-                if otype not in self.ods:
-                    if otype == 'STRSX':
-                        depths = []
-                        for node in self.nodes:
-                            depths.append(node.y)
-                        depths = np.array(depths)
-                        d_incs = depths[1:] - depths[:-1]
-                        vals = self.ods['DISPX'].collect(unlink=False).T
-                        self.out_dict[otype] = (vals[1:] - vals[:-1]) / d_incs[:, np.newaxis]
-                elif isinstance(self.ods[otype], list):
-                    self.out_dict[otype] = []
-                    for i in range(len(self.ods[otype])):
-                        if otype in ['TAU', 'STRS']:
-                            self.out_dict[otype].append(self.ods[otype][i].collect()[2])
-                        else:
-                            self.out_dict[otype].append(self.ods[otype][i].collect())
-                    self.out_dict[otype] = np.array(self.out_dict[otype])
-                else:
-                    vals = self.ods[otype].collect().T
-                    cur_ind = 0
-                    self.out_dict[otype] = []
-                    if otype in ['TAU', 'STRS']:
-                        for ele in self.eles:
-                            mat_type = ele.mat.type
-                            form = 'PlaneStrain'
-                            dfe = df[(df['mat'] == mat_type) & (df['form'] == form)]
-                            if otype == 'TAU':
-                                dfe = dfe[dfe['recorder'] == 'stress']
-                                ostr = 'sxy'
-                            else:
-                                dfe = dfe[dfe['recorder'] == 'strain']
-                                ostr = 'gxy'
-                            assert len(dfe) == 1, len(dfe)
-                            outs = dfe['outs'].iloc[0].split('-')
-                            oind = outs.index(ostr)
-                            self.out_dict[otype].append(vals[cur_ind + oind])
-                            cur_ind += len(outs)
-                        self.out_dict[otype] = np.array(self.out_dict[otype])
-                        # if otype == 'STRS':
-                        #     self.out_dict[otype] = vals[2::3]  # Assumes pimy
-                        # elif otype == 'TAU':
-                        #     self.out_dict[otype] = vals[3::5]  # Assumes pimy
-                    elif otype == 'TAUX':
-                        f_static = -np.cumsum(vals[::2, :] - vals[1::2, :], axis=0)[:-1]  # add left and right
-                        f_dyn = vals[::2, :] + vals[1::2, :]  # add left and right
-                        f_dyn_av = (f_dyn[1:] + f_dyn[:-1]) / 2
-                        # self.out_dict[otype] = (f[1:, :] - f[:-1, :]) / area
-                        self.out_dict[otype] = (f_dyn_av + f_static) / self.area
-                    else:
-                        self.out_dict[otype] = vals
-            # Create time output
-            if 'ACCX' in self.out_dict:
-                self.out_dict['time'] = np.arange(0, len(self.out_dict['ACCX'][0])) * self.rec_dt
-            elif 'TAU' in self.out_dict:
-                self.out_dict['time'] = np.arange(0, len(self.out_dict['TAU'][0])) * self.rec_dt
-        return self.out_dict
 
 
 def site_response_w_pysra(soil_profile, asig, odepths):
