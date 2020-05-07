@@ -1,17 +1,11 @@
-import openseespy.opensees as opy
-import o3seespy as o3
 import o3soil.sra
-import copy
 import sfsimodels as sm
-import json
 import numpy as np
 import eqsig
 from tests.conftest import TEST_DATA_DIR
 
 # for linear analysis comparison
 import liquepy as lq
-import pysra
-from bwplot import cbox
 import json
 
 
@@ -62,10 +56,8 @@ def run():
     mods = sm.load_json('ecp.json', default_to_base=True)
     soil_profile = mods['soil_profile'][1]
 
-
-    record_path = TEST_DATA_DIR
     record_filename = 'short_motion_dt0p01.txt'
-    in_sig = eqsig.load_asig(TEST_DATA_DIR + record_filename)
+    in_sig = eqsig.load_asig(TEST_DATA_DIR + record_filename, m=0.2)
 
     # linear analysis with pysra
     od = lq.sra.run_pysra(soil_profile, in_sig, odepths=np.array([0.0, 2.0]))
@@ -88,18 +80,21 @@ def run():
         sps[0].plot(in_sig.time, in_sig.values, c='k', label='Input')
         # sps[0].plot(pysra_sig.time, o3_surf_vals, c=cbox(0), label='o3')
         sps[0].plot(outputs['time'], outputs['ACCX'][0], c=cbox(3), label='o3')
-        sps[0].plot(pysra_sig.time, pysra_sig.values, c=cbox(1), label='pysra')
+        sps[0].plot(pysra_sig.time, pysra_sig.values, c=cbox(1), label='pysra', ls='--')
 
         sps[1].plot(in_sig.fa_frequencies, abs(in_sig.fa_spectrum), c='k')
         sps[1].plot(surf_sig.fa_frequencies, abs(surf_sig.fa_spectrum), c=cbox(0))
-        sps[1].plot(pysra_sig.fa_frequencies, abs(pysra_sig.fa_spectrum), c=cbox(1))
+        sps[1].plot(pysra_sig.fa_frequencies, abs(pysra_sig.fa_spectrum), c=cbox(1), ls='--')
         sps[1].set_xlim([0, 20])
+        in_sig.smooth_fa_frequencies = in_sig.fa_frequencies
+        surf_sig.smooth_fa_frequencies = in_sig.fa_frequencies
+        pysra_sig.smooth_fa_frequencies = in_sig.fa_frequencies
         h = surf_sig.smooth_fa_spectrum / in_sig.smooth_fa_spectrum
         sps[2].plot(surf_sig.smooth_fa_frequencies, h, c=cbox(0))
         pysra_h = pysra_sig.smooth_fa_spectrum / in_sig.smooth_fa_spectrum
-        sps[2].plot(pysra_sig.smooth_fa_frequencies, pysra_h, c=cbox(1))
+        sps[2].plot(pysra_sig.smooth_fa_frequencies, pysra_h, c=cbox(1), ls='--')
         sps[2].axhline(1, c='k', ls='--')
-        sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r', label='Error x10', lw=0.5)
+        # sps[0].plot(pysra_sig.time, (o3_surf_vals - pysra_sig.values) * 10, c='r', label='Error x10', lw=0.5)
         sps[0].legend()
         plt.show()
 

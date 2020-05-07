@@ -6,57 +6,34 @@ import os
 
 import sfsimodels as sm
 import o3soil
+import o3seespy as o3
 
 
 def run(out_folder, dytime=None):
 
     xi = 0.05
 
-    sl = sm.Soil()
-    sl.type = 'pimy'
-    vs = 160.
-    unit_mass = 1700.0
-    sl.cohesion = 58.0e3
-    sl.phi = 0.0
-    sl.g_mod = vs ** 2 * unit_mass
-    sl.poissons_ratio = 0.0
-    sl.phi = 0.0
-    sl.unit_dry_weight = unit_mass * 9.8
-    sl.specific_gravity = 2.65
-    sl.peak_strain = 0.01  # set additional parameter required for PIMY model
-    ref_press = 100.e3
-    sl.xi = 0.03  # for linear analysis
-    sl.sra_type = 'hyperbolic'
-    o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
-    sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
-    assert np.isclose(vs, sl.get_shear_vel(saturated=False))
+    sl = o3.nd_material.PressureDependMultiYield02(None, 2, 1.8, 9.0e4, 2.2e5, 32, peak_strain=0.1,
+                                      p_ref=101.0, d=0.5, pt_ang=26, con_rates=[0.067, 5.0, 0.23],
+                                      dil_rates=[0.06, 3.0, 0.27], n_surf=20, liquefac=[1.0, 0.0],
+                                                   e_init=0.77, cs_params=[0.9, 0.02, 0.7, 101.0])
+    sl.is_o3_mat = True
+    sl.unit_mass = 0
+    sl.permeability = 1e-6
+    sl.e_curr = sl.e_init
+    sl.dynamic_poissons_ratio = 0.3
+
     sp = sm.SoilProfile()
     sp.add_layer(0, sl)
 
-    sl = sm.Soil()
-    sl.type = 'pimy'
-    vs = 350.
-    unit_mass = 1700.0
-    sl.g_mod = vs ** 2 * unit_mass
-    sl.poissons_ratio = 0.0
-    sl.cohesion = 395.0e3
-    sl.phi = 0.0
-    sl.unit_dry_weight = unit_mass * 9.8
-    sl.specific_gravity = 2.65
-    sl.peak_strain = 0.1  # set additional parameter required for PIMY model
-    sl.xi = 0.03  # for linear analysis
-    sl.sra_type = 'hyperbolic'
-    o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
-    sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
-    sp.add_layer(8.5, sl)
-    sp.height = 14.0
+    sp.height = 4.0
 
-    ecp_out = sm.Output()
-    ecp_out.add_to_dict(sp)
-    ecp_out.to_file('ecp_sp_w_hload.json')
+    # ecp_out = sm.Output()
+    # ecp_out.add_to_dict(sp)
+    # ecp_out.to_file('ecp_sp_w_hload.json')
     import tests.conftest
     record_filename = 'short_motion_dt0p01.txt'
-    asig = eqsig.load_asig(tests.conftest.TEST_DATA_DIR + record_filename, m=2.5)
+    asig = eqsig.load_asig(tests.conftest.TEST_DATA_DIR + record_filename, m=.5)
     if dytime is None:
         ind = None
     else:
@@ -68,12 +45,6 @@ def run(out_folder, dytime=None):
         'TAU': 'all',
         'STRS': 'all'
     }
-    # cache = 0
-    # if not cache:
-    #     outputs = site_response(soil_profile, asig, xi=xi, out_folder=out_folder, outs=outs, rec_dt=asig.dt, analysis_time=dytime, fixed_base=1)
-    # else:
-    #     o3sra_outs = o3ptools.O3SRAOutputs()
-    #     outputs = o3sra_outs.load_results_from_files()
 
     show = 1
     if show:
@@ -81,7 +52,7 @@ def run(out_folder, dytime=None):
         bf, sps = plt.subplots(nrows=3)
         # TODO: Show loads on playback
         # TODO: add material to playback, and show legend with material type, set material.__str__ as basetype, params[2:]
-        sra1d = o3soil.sra.run_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
+        sra1d = o3soil.sra.run_eff_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs, opfile='run_pdmy2.py',
                                    analysis_time=dytime, base_imp=-1, playback=True)
         outputs = sra1d.out_dict
         import pandas as pd
@@ -107,7 +78,7 @@ if __name__ == '__main__':
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
         os.makedirs(out_folder)
-    run(dytime=2, out_folder=out_folder)
+    run(dytime=1, out_folder=out_folder)
     import o3seespy as o3
     o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
     o3res.load_from_cache()

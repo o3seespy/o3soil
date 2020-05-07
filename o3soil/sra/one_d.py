@@ -12,7 +12,7 @@ class SRA1D(object):
 
     def __init__(self, sp, dy=0.5, k0=0.5, base_imp=0, cache_path=None, opfile=None):
         self.sp = sp
-        sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
+        sp.gen_split(props=['unit_mass'], target=dy)
         thicknesses = sp.split["thickness"]
         self.n_node_rows = len(thicknesses) + 1
         node_depths = -np.cumsum(sp.split["thickness"])

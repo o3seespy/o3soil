@@ -41,7 +41,7 @@ class SRA1D(object):
         else:
             self.state = 0
         if self.osi is None:
-            self.osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=self.state)
+            self.osi = o3.OpenSeesInstance(ndm=2, ndf=3, state=self.state)
         nx = 1
         sn = []
         # sn = [[o3.node.Node(osi, ele_width * j, 0) for j in range(nx + 1)]]
@@ -56,17 +56,18 @@ class SRA1D(object):
         if self.base_imp < 0:
             # Fix base nodes
             for j in range(nx + 1):
-                o3.Fix2DOF(self.osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED)
+                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED, o3.cc.FREE)
         else:
             # Fix base nodes
             for j in range(nx + 1):
-                o3.Fix2DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED)
+                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED, o3.cc.FREE)
 
             # Define dashpot nodes
+            self.osi.reset_model_params(2, ndf=2)
             dashpot_node_l = o3.node.Node(self.osi, 0, self.node_depths[-1])
             dashpot_node_2 = o3.node.Node(self.osi, 0, self.node_depths[-1])
-            o3.Fix2DOF(self.osi, dashpot_node_l, o3.cc.FIXED, o3.cc.FIXED)
-            o3.Fix2DOF(self.osi, dashpot_node_2, o3.cc.FREE, o3.cc.FIXED)
+            o3.Fix3DOF(self.osi, dashpot_node_l, o3.cc.FIXED, o3.cc.FIXED, o3.cc.FREE)
+            o3.Fix3DOF(self.osi, dashpot_node_2, o3.cc.FREE, o3.cc.FIXED, o3.cc.FREE)
 
             # define equal DOF for dashpot and soil base nodes
             o3.EqualDOF(self.osi, sn[-1][0], sn[-1][1], [o3.cc.X])
@@ -87,75 +88,88 @@ class SRA1D(object):
             sl_id = self.sp.get_layer_index_by_depth(-y_depth)
             sl = self.sp.layer(sl_id)
 
-            app2mod = {}
-            if y_depth > self.sp.gwl:
-                umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
+            if sl.is_o3_mat:
+                if hasattr(sl, 'built') and sl.built:
+                    pass
+                else:
+                    sl.build(self.osi)
+                    sl.built = 1
+                    mat = sl
+                    self.soil_mats.append(mat)
             else:
-                umass = sl.unit_dry_mass / 1e3
-            overrides = {'nu': pois, 'p_atm': 101,
-                         'rho': umass,
-                         'unit_moist_mass': umass,
-                         'nd': 2.0,
-                         # 'n_surf': 25
-                         }
-            # Define material
-            if sl.type == 'pm4sand':
-                sl_class = o3.nd_material.PM4Sand
-                # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-                app2mod = sl.app2mod
-            elif sl.type == 'sdmodel':
-                sl_class = o3.nd_material.StressDensity
-                # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-                app2mod = sl.app2mod
-            elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
-                if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
-                    if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
-                        v_eff = self.sp.get_v_eff_stress_at_depth(y_depth)
-                        k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
-                        m_eff = v_eff * (1 + 2 * k0) / 3
-                        p = m_eff  # Pa
-                        overrides['d'] = 0.0
+                app2mod = {}
+                if y_depth > self.sp.gwl:
+                    umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
+                else:
+                    umass = sl.unit_dry_mass / 1e3
+                overrides = {'nu': pois, 'p_atm': 101,
+                             'rho': umass,
+                             'unit_moist_mass': umass,
+                             'nd': 2.0,
+                             # 'n_surf': 25
+                             }
+                # Define material
+                if sl.type == 'pm4sand':
+                    sl_class = o3.nd_material.PM4Sand
+                    # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
+                    app2mod = sl.app2mod
+                elif sl.type == 'sdmodel':
+                    sl_class = o3.nd_material.StressDensity
+                    # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
+                    app2mod = sl.app2mod
+                elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
+                    if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
+                        if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
+                            v_eff = self.sp.get_v_eff_stress_at_depth(y_depth)
+                            k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
+                            m_eff = v_eff * (1 + 2 * k0) / 3
+                            p = m_eff  # Pa
+                            overrides['d'] = 0.0
+                        else:
+                            p = 101.0e3  # Pa
+                            overrides['d'] = sl.a
+                        g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / 1e3
                     else:
                         p = 101.0e3  # Pa
-                        overrides['d'] = sl.a
-                    g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / 1e3
+                        overrides['d'] = 0.0
+                        g_mod_r = sl.g_mod / 1e3
+
+                    b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
+                    overrides['p_ref'] = p / 1e3
+                    overrides['g_mod_ref'] = g_mod_r
+                    overrides['bulk_mod_ref'] = b_mod
+                    if sl.type == 'pimy':
+                        overrides['cohesion'] = sl.cohesion / 1e3
+                        sl_class = o3.nd_material.PressureIndependMultiYield
+                    elif sl.type == 'pdmy':
+                        sl_class = o3.nd_material.PressureDependMultiYield
+                    elif sl.type == 'pdmy02':
+                        sl_class = o3.nd_material.PressureDependMultiYield02
                 else:
-                    p = 101.0e3  # Pa
-                    overrides['d'] = 0.0
-                    g_mod_r = sl.g_mod / 1e3
+                    sl_class = o3.nd_material.ElasticIsotropic
+                    sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
+                    overrides['nu'] = sl.poissons_ratio
+                    app2mod['rho'] = 'unit_moist_mass'
+                args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
 
-                b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
-                overrides['p_ref'] = p / 1e3
-                overrides['g_mod_ref'] = g_mod_r
-                overrides['bulk_mod_ref'] = b_mod
-                if sl.type == 'pimy':
-                    overrides['cohesion'] = sl.cohesion / 1e3
-                    sl_class = o3.nd_material.PressureIndependMultiYield
-                elif sl.type == 'pdmy':
-                    sl_class = o3.nd_material.PressureDependMultiYield
-                elif sl.type == 'pdmy02':
-                    sl_class = o3.nd_material.PressureDependMultiYield02
-            else:
-                sl_class = o3.nd_material.ElasticIsotropic
-                sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
-                overrides['nu'] = sl.poissons_ratio
-                app2mod['rho'] = 'unit_moist_mass'
-            args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
-
-            if o3.extensions.has_o3_model_changed(sl_class, prev_sl_class, args, prev_args, kwargs, prev_kwargs):
-                mat = sl_class(self.osi, *args, **kwargs)
-                prev_sl_class = sl_class
-                prev_args = copy.deepcopy(args)
-                prev_kwargs = copy.deepcopy(kwargs)
-                mat.dynamic_poissons_ratio = sl.poissons_ratio
-                self.soil_mats.append(mat)
+                if o3.extensions.has_o3_model_changed(sl_class, prev_sl_class, args, prev_args, kwargs, prev_kwargs):
+                    mat = sl_class(self.osi, *args, **kwargs)
+                    prev_sl_class = sl_class
+                    prev_args = copy.deepcopy(args)
+                    prev_kwargs = copy.deepcopy(kwargs)
+                    mat.dynamic_poissons_ratio = sl.poissons_ratio
+                    self.soil_mats.append(mat)
 
             # def element
             for xx in range(nx):
                 nodes = [sn[i + 1][xx], sn[i + 1][xx + 1], sn[i][xx + 1], sn[i][xx]]  # anti-clockwise
                 # eles.append(o3.element.Quad(self.osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=-grav * unit_masses[i]))
-                self.eles.append(o3.element.SSPquad(self.osi, nodes, mat, o3.cc.PLANE_STRAIN, ele_thick, 0.0,
-                                                    -self.grav * self.unit_masses[i]))
+                # osi, ele_nodes, mat, thick, f_bulk, f_den, k1, k2, void, alpha, b1=0.0, b2=0.0
+                k_water = 2.2e6
+                a_sspquad_up = 6.0e-5
+                self.eles.append(o3.element.SSPquadUP(self.osi, nodes, mat, ele_thick, k_water, f_den=1.0, k1=sl.permeability / 1e3,
+                                                      k2=sl.permeability / 1e3, void=sl.e_curr, alpha=a_sspquad_up,
+                                                      b2=-self.grav))
         self.sn = sn
         if self.base_imp >= 0:
             # define material and element for viscous dampers
@@ -183,20 +197,25 @@ class SRA1D(object):
         o3.system.ProfileSPD(self.osi)
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
         o3.analysis.Transient(self.osi)
-        o3.analyze(self.osi, 10, 500.)
+        o3.analyze(self.osi, 1000, 5.)
+        if self.opfile:
+            o3.extensions.to_py_file(self.osi, self.opfile)
 
-        for i in range(len(self.soil_mats)):
-            if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
-                self.soil_mats[i].update_to_nonlinear(self.osi)
+        # for i in range(len(self.soil_mats)):
+        #     if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
+        #         self.soil_mats[i].update_to_nonlinear(self.osi)
         for ele in self.eles:
             mat = ele.mat
             if hasattr(mat, 'set_nu'):
                 mat.set_nu(mat.dynamic_poissons_ratio, eles=[ele])
+                # TODO: set_dynamic permeability
         o3.analyze(self.osi, 40, 500.)
 
         # reset time and analysis
         o3.wipe_analysis(self.osi)
         self.o3res.coords = o3.get_all_node_coords(self.osi)
+        # if self.opfile:
+        #     o3.extensions.to_py_file(self.osi, self.opfile)
 
     def get_nearest_node_layer_at_depth(self, depth):
         # Convert to positive since node depths go downwards
@@ -321,289 +340,6 @@ def run_sra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, a
     return sra_1d
 
 
-
-def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  rec_dt=None, base_imp=0, cache_path=None, opfile=None):
-    """
-    Run seismic analysis of a soil profile - example based on:
-    http://opensees.berkeley.edu/wiki/index.php/Site_Response_Analysis_of_a_Layered_Soil_Column_(Total_Stress_Analysis)
-
-    Parameters
-    ----------
-    sp: sfsimodels.SoilProfile object
-        A soil profile
-    asig: eqsig.AccSignal object
-        An acceleration signal
-    base_imp: float
-        If positive then use as impedence at base of model,
-        If zero then use last soil layer
-        If negative then use fixed base
-
-    Returns
-    -------
-
-    """
-    if analysis_time is None:
-        analysis_time = asig.time[-1]
-    if outs is None:
-        outs = {'ACCX': [0]}  # Export the horizontal acceleration at the surface
-    if rec_dt is None:
-        rec_dt = analysis_dt
-    else:
-        raise ValueError('This is causing an error')
-    state = 0
-    if opfile:
-        state = 3
-    osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=state)
-    assert isinstance(sp, sm.SoilProfile)
-    sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
-    thicknesses = sp.split["thickness"]
-    n_node_rows = len(thicknesses) + 1
-    node_depths = np.cumsum(sp.split["thickness"])
-    node_depths = np.insert(node_depths, 0, 0)
-    ele_depths = (node_depths[1:] + node_depths[:-1]) / 2
-    unit_masses = sp.split["unit_mass"] / 1e3
-
-    grav = 9.81
-    # Rayleigh damping parameters
-    omega_1 = 2 * np.pi * freqs[0]
-    omega_2 = 2 * np.pi * freqs[1]
-    a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
-    a1 = 2 * xi / (omega_1 + omega_2)
-
-    k0 = 0.5
-    pois = k0 / (1 + k0)
-
-    ele_width = 3 * min(thicknesses)
-
-    # Define nodes and set boundary conditions for simple shear deformation
-    # Start at top and build down?
-    nx = 1
-    sn = []
-    # sn = [[o3.node.Node(self.osi, ele_width * j, 0) for j in range(nx + 1)]]
-    for i in range(0, n_node_rows):
-        # Establish left and right nodes
-        sn.append([o3.node.Node(osi, ele_width * j, -node_depths[i]) for j in range(nx + 1)])
-        # set x and y dofs equal for left and right nodes
-        if i != n_node_rows -1:
-            o3.EqualDOF(osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
-    sn = np.array(sn)
-
-    if base_imp < 0:
-        # Fix base nodes
-        for j in range(nx + 1):
-            o3.Fix2DOF(osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED)
-    else:
-        # Fix base nodes
-        for j in range(nx + 1):
-            o3.Fix2DOF(osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED)
-
-        # Define dashpot nodes
-        dashpot_node_l = o3.node.Node(osi, 0, -node_depths[-1])
-        dashpot_node_2 = o3.node.Node(osi, 0, -node_depths[-1])
-        o3.Fix2DOF(osi, dashpot_node_l, o3.cc.FIXED, o3.cc.FIXED)
-        o3.Fix2DOF(osi, dashpot_node_2, o3.cc.FREE, o3.cc.FIXED)
-
-        # define equal DOF for dashpot and soil base nodes
-        o3.EqualDOF(osi, sn[-1][0], sn[-1][1], [o3.cc.X])
-        o3.EqualDOF(osi, sn[-1][0], dashpot_node_2, [o3.cc.X])
-
-    # define materials
-    ele_thick = 1.0  # m
-    soil_mats = []
-    strains = np.logspace(-6, -0.5, 16)
-    prev_args = []
-    prev_kwargs = {}
-    prev_sl_class = None
-    eles = []
-    for i in range(len(thicknesses)):
-        y_depth = ele_depths[i]
-
-        sl_id = sp.get_layer_index_by_depth(y_depth)
-        sl = sp.layer(sl_id)
-
-        app2mod = {}
-        if y_depth > sp.gwl:
-            umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
-        else:
-            umass = sl.unit_dry_mass / 1e3
-        overrides = {'nu': pois, 'p_atm': 101,
-                     'rho': umass,
-                     'unit_moist_mass': umass,
-                     'nd': 2.0,
-                     # 'n_surf': 25
-                     }
-        # Define material
-        if sl.type == 'pm4sand':
-            sl_class = o3.nd_material.PM4Sand
-            # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-            app2mod = sl.app2mod
-        elif sl.type == 'sdmodel':
-            sl_class = o3.nd_material.StressDensity
-            # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-            app2mod = sl.app2mod
-        elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
-            if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
-                if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
-                    v_eff = sp.get_v_eff_stress_at_depth(y_depth)
-                    k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
-                    m_eff = v_eff * (1 + 2 * k0) / 3
-                    p = m_eff  # Pa
-                    overrides['d'] = 0.0
-                else:
-                    p = 101.0e3  # Pa
-                    overrides['d'] = sl.a
-                g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / 1e3
-            else:
-                p = 101.0e3  # Pa
-                overrides['d'] = 0.0
-                g_mod_r = sl.g_mod / 1e3
-
-            b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
-            overrides['p_ref'] = p / 1e3
-            overrides['g_mod_ref'] = g_mod_r
-            overrides['bulk_mod_ref'] = b_mod
-            if sl.type == 'pimy':
-                overrides['cohesion'] = sl.cohesion / 1e3
-                sl_class = o3.nd_material.PressureIndependMultiYield
-            elif sl.type == 'pdmy':
-                sl_class = o3.nd_material.PressureDependMultiYield
-            elif sl.type == 'pdmy02':
-                sl_class = o3.nd_material.PressureDependMultiYield02
-        else:
-            sl_class = o3.nd_material.ElasticIsotropic
-            sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
-            overrides['nu'] = sl.poissons_ratio
-            app2mod['rho'] = 'unit_moist_mass'
-        args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
-
-        if o3.extensions.has_o3_model_changed(sl_class, prev_sl_class, args, prev_args, kwargs, prev_kwargs):
-            mat = sl_class(osi, *args, **kwargs)
-            prev_sl_class = sl_class
-            prev_args = copy.deepcopy(args)
-            prev_kwargs = copy.deepcopy(kwargs)
-            mat.dynamic_poissons_ratio = sl.poissons_ratio
-            soil_mats.append(mat)
-
-        # def element
-        for xx in range(nx):
-            nodes = [sn[i+1][xx], sn[i+1][xx + 1], sn[i][xx + 1], sn[i][xx]]  # anti-clockwise
-            #eles.append(o3.element.Quad(osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=-grav * unit_masses[i]))
-            eles.append(o3.element.SSPquad(osi, nodes, mat, o3.cc.PLANE_STRAIN, ele_thick, 0.0, -grav * unit_masses[i]))
-
-    if base_imp >= 0:
-        # define material and element for viscous dampers
-        if base_imp == 0:
-            sl = sp.get_soil_at_depth(sp.height)
-            base_imp = sl.unit_dry_mass * sp.get_shear_vel_at_depth(sp.height)
-        c_base = ele_width * base_imp / 1e3
-        dashpot_mat = o3.uniaxial_material.Viscous(osi, c_base, alpha=1.)
-        o3.element.ZeroLength(osi, [dashpot_node_l, dashpot_node_2], mats=[dashpot_mat], dirs=[o3.cc.DOF2D_X])
-
-    # Static analysis
-    o3.constraints.Transformation(osi)
-    o3.test.NormDispIncr(osi, tol=1.0e-5, max_iter=30, p_flag=0)
-    o3.algorithm.Newton(osi)
-    o3.numberer.RCM(osi)
-    o3.system.ProfileSPD(osi)
-    o3.integrator.Newmark(osi, gamma=0.5, beta=0.25)
-    o3.analysis.Transient(osi)
-    o3.analyze(osi, 10, 500.)
-
-    for i in range(len(soil_mats)):
-        if hasattr(soil_mats[i], 'update_to_nonlinear'):
-            soil_mats[i].update_to_nonlinear(osi)
-    for ele in eles:
-        mat = ele.mat
-        if hasattr(mat, 'set_nu'):
-            mat.set_nu(mat.dynamic_poissons_ratio, eles=[ele])
-    o3.analyze(osi, 40, 500.)
-
-    # reset time and analysis
-    o3.wipe_analysis(osi)
-    o3.set_time(osi, 0.0)
-
-    coords = o3.get_all_node_coords(osi)
-    ele_node_tags = o3.get_all_ele_node_tags_as_dict(osi)
-    all_node_xdisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_X], 'disp', nsd=4)
-    all_node_ydisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
-
-    if hasattr(sp, 'hloads'):
-        # Define the dynamic analysis
-        o3.constraints.Transformation(osi)
-        o3.test.NormDispIncr(osi, tol=1.0e-4, max_iter=30, p_flag=0)
-        # o3.test_check.EnergyIncr(osi, tol=1.0e-6, max_iter=30)
-        o3.algorithm.Newton(osi)
-        o3.system.SparseGeneral(osi)
-        o3.numberer.RCM(osi)
-        o3.integrator.Newmark(osi, gamma=0.5, beta=0.25)
-        o3.analysis.Transient(osi)
-        # o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
-        pload = sp.hloads[0].p_x
-        static_time = 100
-        print('time: ', o3.get_time(osi))
-        # Add static stress bias
-        time_series = o3.time_series.Path(osi, time=[0, static_time / 2, static_time, 1e3], values=[0, 0.5, 1, 1], use_last=1)
-        o3.pattern.Plain(osi, time_series)
-        o3.Load(osi, sn[0][0], [pload * ele_width, 0])
-        o3.Load(osi, sn[9][0], [-pload * ele_width, 0])
-        if base_imp >= 0:
-            o3.Load(osi, sn[-1][0], [-pload, 0])
-
-        static_dt = 0.1
-        o3.analyze(osi, int(static_time / static_dt) * 1.5, static_dt)
-        o3.load_constant(osi, time=0)
-
-        o3.wipe_analysis(osi)
-    o3.set_time(osi, 0.0)  # TODO:
-    # Define the dynamic analysis
-    o3.constraints.Transformation(osi)
-    o3.test.NormDispIncr(osi, tol=1.0e-4, max_iter=30, p_flag=0)
-    # o3.test_check.EnergyIncr(osi, tol=1.0e-6, max_iter=30)
-    o3.algorithm.Newton(osi)
-    o3.system.SparseGeneral(osi)
-    o3.numberer.RCM(osi)
-    o3.integrator.Newmark(osi, gamma=0.5, beta=0.25)
-    o3.analysis.Transient(osi)
-    o3.rayleigh.Rayleigh(osi, a0, a1, 0, 0)
-
-    init_time = o3.get_time(osi)
-    o3sra_outs = O3SRAOutputs()
-    o3sra_outs.start_recorders(osi, outs, sn, eles, rec_dt=rec_dt)
-
-    # Define the dynamic input motion
-    if base_imp < 0:  # fixed base
-        acc_series = o3.time_series.Path(osi, dt=asig.dt, values=asig.values)
-        o3.pattern.UniformExcitation(osi, dir=o3.cc.X, accel_series=acc_series)
-    else:
-        ts_obj = o3.time_series.Path(osi, dt=asig.dt, values=asig.velocity * 1, factor=c_base)
-        o3.pattern.Plain(osi, ts_obj)
-        o3.Load(osi, sn[-1][0], [1., 0.])
-    if state == 3:
-        o3.extensions.to_py_file(osi, opfile)
-    # Run the dynamic motion
-    while o3.get_time(osi) - init_time < analysis_time:
-        if o3.analyze(osi, 1, analysis_dt):
-            print('failed')
-            break
-    o3.wipe(osi)
-    out_dict = o3sra_outs.results_to_dict()
-
-    if cache_path:
-        import o3plot
-        o3sra_outs.cache_path = cache_path
-        o3sra_outs.results_to_files()
-        o3res = o3.results.Results2D()
-        o3res.cache_path = cache_path
-        o3res.coords = coords
-        o3res.ele2node_tags = ele_node_tags
-        o3res.x_disp = all_node_xdisp_rec.collect()
-        o3res.y_disp = all_node_ydisp_rec.collect()
-        o3res.save_to_cache()
-
-    return out_dict
-
-
 class O3SRAOutputs(object):
     cache_path = ''
     out_dict = None
@@ -640,7 +376,7 @@ class O3SRAOutputs(object):
                             o3.recorder.NodeToArrayCache(osi, node=sn[ind][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt))
             if otype == 'TAU':
                 for ele in eles:
-                    assert isinstance(ele, o3.element.SSPquad)
+                    assert isinstance(ele, o3.element.SSPquad) or isinstance(ele, o3.element.SSPquadUP)
                 ods['TAU'] = []
                 if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
                     ods['TAU'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)

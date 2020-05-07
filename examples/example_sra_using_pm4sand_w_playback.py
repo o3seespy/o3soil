@@ -28,6 +28,7 @@ def run(out_folder, dytime=None):
     sl.peak_strain = 0.01  # set additional parameter required for PIMY model
     ref_press = 100.e3
     sl.xi = 0.03  # for linear analysis
+    sl.permeability = 1.0e-9
     sl.sra_type = 'hyperbolic'
     o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
@@ -48,9 +49,9 @@ def run(out_folder, dytime=None):
     sl.poissons_ratio = 0.3
     sl.phi = 33.
 
-    sl.permeability = 1.0e-9
+    sl.permeability = 1.0e-5
     sl.p_atm = 101.0e3
-    sp.add_layer(2, sl)
+    # sp.add_layer(2, sl)
 
     sl = sm.Soil()
     sl.type = 'pimy'
@@ -64,6 +65,7 @@ def run(out_folder, dytime=None):
     sl.specific_gravity = 2.65
     sl.peak_strain = 0.1  # set additional parameter required for PIMY model
     sl.xi = 0.03  # for linear analysis
+    sl.permeability = 1.0e-9
     sl.sra_type = 'hyperbolic'
     ref_press = 100.e3
     o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
@@ -96,7 +98,7 @@ def run(out_folder, dytime=None):
         # TODO: Show loads on playback
         # TODO: add material to playback, and show legend with material type, set material.__str__ as basetype, params[2:]
         sra1d = o3soil.sra.run_eff_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
-                                   analysis_time=dytime, base_imp=-1, playback=True)
+                                   analysis_time=dytime, base_imp=-1, playback=True, opfile='run_pm.py')
         outputs = sra1d.out_dict
         import pandas as pd
         df = pd.DataFrame.from_dict(outputs['TAU'])
