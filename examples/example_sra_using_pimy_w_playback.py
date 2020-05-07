@@ -102,7 +102,7 @@ def run(out_folder, dytime=None):
 # TODO: how does ele2node know which element it is referring to? it doesnt
 if __name__ == '__main__':
     name = __file__.replace('.py', '')
-    name = name.split("run_")[-1]
+    name = name.split("example_")[-1]
     OP_PATH = "temp/"
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):

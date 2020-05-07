@@ -200,6 +200,7 @@ class SRA1D(object):
         o3.analyze(self.osi, 1000, 5.)
         if self.opfile:
             o3.extensions.to_py_file(self.osi, self.opfile)
+            o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         # for i in range(len(self.soil_mats)):
         #     if hasattr(self.soil_mats[i], 'update_to_nonlinear'):

@@ -26,7 +26,7 @@ def run(out_folder, dytime=None):
     sp = sm.SoilProfile()
     sp.add_layer(0, sl)
 
-    sp.height = 4.0
+    sp.height = 3.0
 
     # ecp_out = sm.Output()
     # ecp_out.add_to_dict(sp)
@@ -73,7 +73,7 @@ def run(out_folder, dytime=None):
 # TODO: how does ele2node know which element it is referring to? it doesnt
 if __name__ == '__main__':
     name = __file__.replace('.py', '')
-    name = name.split("run_")[-1]
+    name = name.split("example_")[-1]
     OP_PATH = "temp/"
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
