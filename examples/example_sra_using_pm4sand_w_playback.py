@@ -9,8 +9,10 @@ import o3soil
 
 
 def run(out_folder, dytime=None):
+    import liquepy as lq
 
     xi = 0.05
+    gravity = 9.81
 
     sl = sm.Soil()
     sl.type = 'pimy'
@@ -33,6 +35,23 @@ def run(out_folder, dytime=None):
     sp = sm.SoilProfile()
     sp.add_layer(0, sl)
 
+    sl = lq.num.o3.PM4Sand(liq_mass_density=1.0)
+    sl.relative_density = 0.35
+    sl.g0_mod = 476.0
+    sl.h_po = 0.53
+    crr_n15 = 0.13
+    sl.unit_sat_weight = 1700.0 * gravity
+
+    sl.e_min = 0.5
+    sl.e_max = 0.8
+    k0 = 0.5
+    sl.poissons_ratio = 0.3
+    sl.phi = 33.
+
+    sl.permeability = 1.0e-9
+    sl.p_atm = 101.0e3
+    sp.add_layer(2, sl)
+
     sl = sm.Soil()
     sl.type = 'pimy'
     vs = 350.
@@ -46,6 +65,7 @@ def run(out_folder, dytime=None):
     sl.peak_strain = 0.1  # set additional parameter required for PIMY model
     sl.xi = 0.03  # for linear analysis
     sl.sra_type = 'hyperbolic'
+    ref_press = 100.e3
     o3soil.backbone.set_params_from_op_pimy_model(sl, ref_press)
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
     sp.add_layer(8.5, sl)
@@ -56,7 +76,7 @@ def run(out_folder, dytime=None):
     ecp_out.to_file('ecp_sp_w_hload.json')
     import tests.conftest
     record_filename = 'short_motion_dt0p01.txt'
-    asig = eqsig.load_asig(tests.conftest.TEST_DATA_DIR + record_filename, m=.5)
+    asig = eqsig.load_asig(tests.conftest.TEST_DATA_DIR + record_filename, m=2.5)
     if dytime is None:
         ind = None
     else:
@@ -68,12 +88,6 @@ def run(out_folder, dytime=None):
         'TAU': 'all',
         'STRS': 'all'
     }
-    # cache = 0
-    # if not cache:
-    #     outputs = site_response(soil_profile, asig, xi=xi, out_folder=out_folder, outs=outs, rec_dt=asig.dt, analysis_time=dytime, fixed_base=1)
-    # else:
-    #     o3sra_outs = o3ptools.O3SRAOutputs()
-    #     outputs = o3sra_outs.load_results_from_files()
 
     show = 1
     if show:
@@ -81,7 +95,7 @@ def run(out_folder, dytime=None):
         bf, sps = plt.subplots(nrows=3)
         # TODO: Show loads on playback
         # TODO: add material to playback, and show legend with material type, set material.__str__ as basetype, params[2:]
-        sra1d = o3soil.sra.run_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
+        sra1d = o3soil.sra.run_eff_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
                                    analysis_time=dytime, base_imp=-1, playback=True)
         outputs = sra1d.out_dict
         import pandas as pd
@@ -107,7 +121,7 @@ if __name__ == '__main__':
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
         os.makedirs(out_folder)
-    run(dytime=1, out_folder=out_folder)
+    run(dytime=4, out_folder=out_folder)
     import o3seespy as o3
     o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
     o3res.load_from_cache()
