@@ -72,6 +72,7 @@ def run(out_folder, dytime=None):
     sl.inputs += ['strain_curvature', 'xi_min', 'sra_type', 'strain_ref', 'peak_strain']
     sp.add_layer(8.5, sl)
     sp.height = 14.0
+    sp.gwl = 2
 
     ecp_out = sm.Output()
     ecp_out.add_to_dict(sp)
@@ -89,7 +90,8 @@ def run(out_folder, dytime=None):
         'ACCX': 'all',
         'TAU': 'all',
         'STRS': 'all',
-        'ESIGY': 'all'
+        'ESIGY': 'all',
+        'PP': 'all'
     }
 
     show = 1
@@ -109,6 +111,7 @@ def run(out_folder, dytime=None):
         sps[0].plot(outputs["time"], outputs["TAU"][ind_6m], ls='--', c='r')
         sps[0].plot(outputs["time"], outputs["TAU"][ind_12m], ls='--')
         sps[2].plot(outputs["time"], outputs["ESIGY"][ind_6m], ls='--', c='r')
+        sps[2].plot(outputs["time"], outputs["PP"][ind_6m], ls='--', c='b')
         sps[1].plot(outputs['STRS'][ind_6m], outputs['TAU'][ind_6m], c='r')
         # sps[1].plot(outputs['STRS'][3], sl.g_mod / 1e3 * outputs['STRS'][3], ls='--')
         # sps[2].plot(outputs["time"], outputs["ACCX"][5], ls='--')
@@ -122,8 +125,10 @@ if __name__ == '__main__':
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
         os.makedirs(out_folder)
-    run(dytime=1, out_folder=out_folder)
-    import o3seespy as o3
-    o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
-    o3res.load_from_cache()
-    o3plot.replot(o3res, xmag=0.5, t_scale=1)
+    run(dytime=10, out_folder=out_folder)
+    playback = 0
+    if playback:
+        import o3seespy as o3
+        o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
+        o3res.load_from_cache()
+        o3plot.replot(o3res, xmag=0.5, t_scale=1)

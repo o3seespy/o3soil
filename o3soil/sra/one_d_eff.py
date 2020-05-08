@@ -190,7 +190,7 @@ class SRA1D(object):
         for ele in self.eles:
             self.o3res.mat2ele_tags.append([ele.mat.tag, ele.tag])
 
-    def execute_static(self):
+    def execute_static(self, ray_freqs=(0.5, 10), xi=0.03):
         # Static analysis
         o3.constraints.Transformation(self.osi)
         o3.test.NormDispIncr(self.osi, tol=1.0e-5, max_iter=30, p_flag=0)
@@ -199,14 +199,19 @@ class SRA1D(object):
         o3.system.ProfileSPD(self.osi)
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
         o3.analysis.Transient(self.osi)
+        omega_1 = 2 * np.pi * ray_freqs[0]
+        omega_2 = 2 * np.pi * ray_freqs[1]
+        a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
+        a1 = 2 * xi / (omega_1 + omega_2)
+        o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
         o3.analyze(self.osi, 1000, 5.)
         if self.opfile:
             o3.extensions.to_py_file(self.osi, self.opfile)
             o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
-        # for i in range(len(self.soil_mats)):
-        #     if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
-        #         self.soil_mats[i].update_to_nonlinear(self.osi)
+        for i in range(len(self.soil_mats)):
+            if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
+                self.soil_mats[i].update_to_nonlinear(self.osi)
         for ele in self.eles:
             mat = ele.mat
             if hasattr(mat, 'set_nu'):

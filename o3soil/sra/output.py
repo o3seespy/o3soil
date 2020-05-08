@@ -3,6 +3,11 @@ import os
 import numpy as np
 import o3seespy as o3
 
+ecp2o3_type_dict = {'TAU': ['stress', 'sxy'],
+                    'ESIGY': ['stress', 'syy'],
+                    'ESIGX': ['stress', 'sxx'],
+                    'STRS': ['strain', 'gxy']}
+
 
 class O3SRAOutputs(object):
     cache_path = ''
@@ -26,7 +31,7 @@ class O3SRAOutputs(object):
         rd = {}
         srd = {}
         for otype in outs:
-            if otype in ['ACCX', 'DISPX']:
+            if otype in ['ACCX', 'DISPX', 'PP']:
                 if isinstance(outs[otype], str) and outs[otype] == 'all':
 
                     if otype == 'ACCX':
@@ -35,31 +40,33 @@ class O3SRAOutputs(object):
                     if otype == 'DISPX':
                         rd['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_X], res_type='disp',
                                                                 dt=rec_dt)
-                    # if otype == 'PP':
-                    #     ods['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_PP], res_type='UNKNONWN',
-                    #                                             dt=rec_dt)
+                    if otype == 'PP':
+                        rd['PP'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_PP], res_type='vel',
+                                                                dt=rec_dt)
                 else:
                     rd['ACCX'] = []
                     for i in range(len(outs['ACCX'])):
                         ind = np.argmin(abs(node_depths - outs['ACCX'][i]))
                         rd['ACCX'].append(
                             o3.recorder.NodeToArrayCache(osi, node=sn[ind][0], dofs=[o3.cc.X], res_type='accel', dt=rec_dt))
-            if otype == 'TAU':
+            if otype in ecp2o3_type_dict:
+                rname = ecp2o3_type_dict[otype][0]  # recorder name
                 for ele in eles:
                     assert isinstance(ele, o3.element.SSPquad) or isinstance(ele, o3.element.SSPquadUP)
 
-                if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
-                    srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
+                if isinstance(outs[otype], str) and outs[otype] == 'all':
+                    if rname not in srd:
+                        srd[rname] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=[rname], dt=rec_dt)
                 else:
                     raise ValueError('Currently not supported')
                     # rd['STRESS'] = []
                     # for i in range(len(outs['TAU'])):
                     #     ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
                     #     rd['STRESS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
-            if otype == 'ESIGY':
-                if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
-                    if 'stress' not in srd:
-                        srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
+            # if otype == 'ESIGY':
+            #     if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
+            #         if 'stress' not in srd:
+            #             srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
             if otype == 'STRS':
                 if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
                     srd['strain'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
@@ -117,24 +124,16 @@ class O3SRAOutputs(object):
         if self.out_dict is None:
             self.out_dict = {}
             for item in self.srd:
-                print('run collect: ', item)
                 self.srd[item] = self.srd[item].collect().T
             for otype in items:
                 if otype not in self.rd:
-                    if otype == 'TAU':
-                        rname = 'stress'
-                        ostr = 'sxy'
-                    elif otype == 'ESIGY':
-                        rname = 'stress'
-                        ostr = 'syy'
-                    else:
-                        rname = 'strain'
-                        ostr = 'gxy'
-                    dfe = df[df['recorder'] == rname]
-                    vals = self.srd[rname]
-                    cur_ind = 0
-                    self.out_dict[otype] = []
-                    if otype in ['TAU', 'STRS', 'ESIGY']:
+                    if otype in ecp2o3_type_dict:
+                        rname = ecp2o3_type_dict[otype][0]
+                        ostr = ecp2o3_type_dict[otype][1]
+                        dfe = df[df['recorder'] == rname]
+                        vals = self.srd[rname]
+                        cur_ind = 0
+                        self.out_dict[otype] = []
                         for ele in self.eles:
                             mat_type = ele.mat.type
                             form = 'PlaneStrain'
