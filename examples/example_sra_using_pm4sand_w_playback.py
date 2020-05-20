@@ -36,7 +36,7 @@ def run(out_folder, dytime=None):
     sp = sm.SoilProfile()
     sp.add_layer(0, sl)
 
-    sl = lq.num.o3.PM4Sand(liq_mass_density=1.0)
+    sl = lq.num.o3.PM4Sand(liq_mass_density=1.0e3)
     sl.relative_density = 0.35
     sl.g0_mod = 476.0
     sl.h_po = 0.53
@@ -51,7 +51,7 @@ def run(out_folder, dytime=None):
 
     sl.permeability = 1.0e-5
     sl.p_atm = 101.0e3
-    sp.add_layer(2, sl)
+    sp.add_layer(3, sl)
 
     sl = sm.Soil()
     sl.o3_type = 'pimy'
@@ -91,28 +91,38 @@ def run(out_folder, dytime=None):
         'TAU': 'all',
         'STRS': 'all',
         'ESIGY': 'all',
-        'PP': 'all'
+        'ESIGX': 'all',
+        # 'PP': 'all'
     }
 
     show = 1
     if show:
         import matplotlib.pyplot as plt
+        from bwplot import cbox
         bf, sps = plt.subplots(nrows=3)
         sra1d = o3soil.sra.run_eff_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
                                    analysis_time=dytime, base_imp=-1, playback=True, opfile='run_pm.py')
+        # sra1d = o3soil.sra.run_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
+        #                                analysis_time=dytime, base_imp=-1, playback=True, opfile='run_pm.py')
         outputs = sra1d.out_dict
         import pandas as pd
         df = pd.DataFrame.from_dict(outputs['TAU'])
         df.to_csv('tau.csv', index=False)
-        ind_3m = sra1d.get_nearest_ele_layer_at_depth(3)
-        ind_6m = sra1d.get_nearest_ele_layer_at_depth(6)
-        ind_12m = sra1d.get_nearest_ele_layer_at_depth(12)
-        sps[0].plot(outputs["time"], outputs["TAU"][ind_3m], ls='--')
-        sps[0].plot(outputs["time"], outputs["TAU"][ind_6m], ls='--', c='r')
-        sps[0].plot(outputs["time"], outputs["TAU"][ind_12m], ls='--')
-        sps[2].plot(outputs["time"], outputs["ESIGY"][ind_6m], ls='--', c='r')
-        sps[2].plot(outputs["time"], outputs["PP"][ind_6m], ls='--', c='b')
-        sps[1].plot(outputs['STRS'][ind_6m], outputs['TAU'][ind_6m], c='r')
+        ind0 = sra1d.get_nearest_ele_layer_at_depth(2)
+        ind1 = sra1d.get_nearest_ele_layer_at_depth(5)
+        ind2 = sra1d.get_nearest_ele_layer_at_depth(10)
+        print(ind0, ind1, ind2)
+        sps[0].plot(outputs["time"], outputs["TAU"][ind0], ls='--', lw=2, c=cbox(0))
+        sps[0].plot(outputs["time"], outputs["TAU"][ind1], ls='--', c=cbox(1))
+        sps[0].plot(outputs["time"], outputs["TAU"][ind2], ls='--', lw=0.5, c=cbox(2))
+        sps[1].plot(outputs['STRS'][ind0], outputs['TAU'][ind0], c=cbox(0))
+        sps[1].plot(outputs['STRS'][ind1], outputs['TAU'][ind1], c=cbox(1))
+        sps[2].plot(outputs["time"], outputs["ESIGY"][ind0], ls='-', c=cbox(0))
+        sps[2].plot(outputs["time"], outputs["ESIGX"][ind0], ls='--', c=cbox(0))
+        # sps[2].plot(outputs["time"], outputs["PP"][ind0], ls=':', c=cbox(0))
+        sps[2].plot(outputs["time"], outputs["ESIGY"][ind1], ls='-', c=cbox(1))
+        sps[2].plot(outputs["time"], outputs["ESIGX"][ind1], ls='--', c=cbox(1))
+        # sps[2].plot(outputs["time"], outputs["PP"][ind1], ls=':', c=cbox(1))
         # sps[1].plot(outputs['STRS'][3], sl.g_mod / 1e3 * outputs['STRS'][3], ls='--')
         # sps[2].plot(outputs["time"], outputs["ACCX"][5], ls='--')
         plt.show()
@@ -125,10 +135,10 @@ if __name__ == '__main__':
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
         os.makedirs(out_folder)
-    run(dytime=10, out_folder=out_folder)
-    playback = 0
+    run(dytime=5.5, out_folder=out_folder)
+    playback = 1
     if playback:
         import o3seespy as o3
         o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
         o3res.load_from_cache()
-        o3plot.replot(o3res, xmag=0.5, t_scale=1)
+        o3plot.replot(o3res, xmag=5.5, t_scale=10)

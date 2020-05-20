@@ -209,11 +209,11 @@ class SRA1D(object):
 
     def get_nearest_node_layer_at_depth(self, depth):
         # Convert to positive since node depths go downwards
-        return int(np.round(np.interp(-depth, -self.node_depths, np.arange(len(self.node_depths)))))
+        return int(np.round(np.interp(depth, -self.node_depths, np.arange(len(self.node_depths)))))
 
     def get_nearest_ele_layer_at_depth(self, depth):
         # Convert to positive since ele depths go downwards
-        return int(np.round(np.interp(-depth, -self.ele_depths, np.arange(len(self.ele_depths)))))
+        return int(np.round(np.interp(depth, -self.ele_depths, np.arange(len(self.ele_depths)))))
 
     def apply_loads(self, ray_freqs=(0.5, 10), xi=0.03):
         o3.set_time(self.osi, 0.0)

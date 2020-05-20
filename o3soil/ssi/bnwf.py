@@ -63,7 +63,7 @@ def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=Tr
     else:
         q_ult = gf.capacity_salgado_2008(sl, fd)
         f_ult = q_ult * fd.area
-        f_spring = f_ult / n_springs / 2  # TODO: should exterior be different? -should be divide by n_springs
+        f_spring = f_ult / n_springs / 1.3  # TODO: should exterior be different? -should be divide by n_springs, end should be different
         int_spring_mat_1 = o3.uniaxial_material.Steel02(osi, f_spring, k_spring, b=0.05, params=[5, 0.925, 0.15])
         ext_spring_mat_1 = o3.uniaxial_material.Steel02(osi, f_spring, r_k * k_spring, b=0.05, params=[5, 0.925, 0.15])
         if dettach:

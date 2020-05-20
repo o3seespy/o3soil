@@ -67,15 +67,6 @@ class O3SRAOutputs(object):
             #     if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
             #         if 'stress' not in srd:
             #             srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
-            if otype == 'STRS':
-                if isinstance(outs['STRS'], str) and outs['STRS'] == 'all':
-                    srd['strain'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['strain'], dt=rec_dt)
-                else:
-                    # rd['STRS'] = []
-                    raise ValueError('Currently not supported')
-                    # for i in range(len(outs['STRS'])):
-                    #     ind = np.argmin(abs(ele_depths - outs['STRS'][i]))
-                    #     rd['STRS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['strain'], dt=rec_dt))
             if otype == 'TAUX':
                 if isinstance(outs['TAUX'], str) and outs['TAUX'] == 'all':
                     rd['TAUX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn.flatten(f_order), dofs=[o3.cc.X],
@@ -126,7 +117,18 @@ class O3SRAOutputs(object):
             for item in self.srd:
                 self.srd[item] = self.srd[item].collect().T
             for otype in items:
-                if otype not in self.rd:
+                if otype in self.rd:
+                    vals = self.rd[otype].collect().T
+                    self.out_dict[otype] = []
+                    if otype == 'TAUX':
+                        f_static = -np.cumsum(vals[::2, :] - vals[1::2, :], axis=0)[:-1]  # add left and right
+                        f_dyn = vals[::2, :] + vals[1::2, :]  # add left and right
+                        f_dyn_av = (f_dyn[1:] + f_dyn[:-1]) / 2
+                        # self.out_dict[otype] = (f[1:, :] - f[:-1, :]) / area
+                        self.out_dict[otype] = (f_dyn_av + f_static) / self.area
+                    else:
+                        self.out_dict[otype] = vals
+                else:
                     if otype in ecp2o3_type_dict:
                         rname = ecp2o3_type_dict[otype][0]
                         ostr = ecp2o3_type_dict[otype][1]
@@ -152,26 +154,7 @@ class O3SRAOutputs(object):
                         d_incs = depths[1:] - depths[:-1]
                         vals = self.rd['DISPX'].collect(unlink=False).T
                         self.out_dict[otype] = (vals[1:] - vals[:-1]) / d_incs[:, np.newaxis]
-                # elif isinstance(self.rd[otype], list):
-                #     self.out_dict[otype] = []
-                #     for i in range(len(self.rd[otype])):
-                #         if otype in ['TAU', 'STRS']:
-                #             self.out_dict[otype].append(self.rd[otype][i].collect()[2])
-                #         else:
-                #             self.out_dict[otype].append(self.rd[otype][i].collect())
-                #     self.out_dict[otype] = np.array(self.out_dict[otype])
-                else:
-                    vals = self.rd[otype].collect().T
-                    cur_ind = 0
-                    self.out_dict[otype] = []
-                    if otype == 'TAUX':
-                        f_static = -np.cumsum(vals[::2, :] - vals[1::2, :], axis=0)[:-1]  # add left and right
-                        f_dyn = vals[::2, :] + vals[1::2, :]  # add left and right
-                        f_dyn_av = (f_dyn[1:] + f_dyn[:-1]) / 2
-                        # self.out_dict[otype] = (f[1:, :] - f[:-1, :]) / area
-                        self.out_dict[otype] = (f_dyn_av + f_static) / self.area
-                    else:
-                        self.out_dict[otype] = vals
+
             # Create time output
             if 'ACCX' in self.out_dict:
                 self.out_dict['time'] = np.arange(0, len(self.out_dict['ACCX'][0])) * self.rec_dt
