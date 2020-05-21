@@ -178,8 +178,8 @@ class SRA1D(object):
             if self.base_imp == 0:
                 sl = self.sp.get_soil_at_depth(self.sp.height)
                 base_imp = sl.unit_dry_mass * self.sp.get_shear_vel_at_depth(self.sp.height)
-            c_base = self.ele_width * base_imp / 1e3
-            dashpot_mat = o3.uniaxial_material.Viscous(self.osi, c_base, alpha=1.)
+            self.c_base = self.ele_width * base_imp / 1e3
+            dashpot_mat = o3.uniaxial_material.Viscous(self.osi, self.c_base, alpha=1.)
             o3.element.ZeroLength(self.osi, [dashpot_node_l, dashpot_node_2], mats=[dashpot_mat], dirs=[o3.cc.DOF2D_X])
 
         self.o3res = o3.results.Results2D(cache_path=self.cache_path)
@@ -265,10 +265,10 @@ class SRA1D(object):
             print(i, y, ind)
             if self.sp.loads_are_stresses:
                 pload *= self.ele_width
-            o3.Load(self.osi, self.sn[ind][0], [pload, 0])
+            o3.Load(self.osi, self.sn[ind][0], [pload, 0, 0])
             net_hload += pload
         if self.base_imp >= 0:
-            o3.Load(self.osi, self.sn[-1][0], [-net_hload, 0])
+            o3.Load(self.osi, self.sn[-1][0], [-net_hload, 0, 0])
 
         static_dt = 0.1
         o3.analyze(self.osi, int(static_time / static_dt), static_dt)
@@ -316,7 +316,7 @@ class SRA1D(object):
         else:
             ts_obj = o3.time_series.Path(self.osi, dt=asig.dt, values=asig.velocity * 1, factor=self.c_base)
             o3.pattern.Plain(self.osi, ts_obj)
-            o3.Load(self.osi, self.sn[-1][0], [1., 0.])
+            o3.Load(self.osi, self.sn[-1][0], [1., 0., 0])
         if self.state == 3:
             o3.extensions.to_py_file(self.osi, self.opfile)
         # Run the dynamic motion
@@ -330,7 +330,6 @@ class SRA1D(object):
         self.out_dict = self.o3sra_outs.results_to_dict()
 
         if self.cache_path:
-            import o3_plot
             self.o3sra_outs.cache_path = self.cache_path
             self.o3sra_outs.results_to_files()
             self.o3res.save_to_cache()

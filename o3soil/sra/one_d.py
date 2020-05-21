@@ -49,7 +49,7 @@ class SRA1D(object):
             sn.append([o3.node.Node(self.osi, self.ele_width * j, self.node_depths[i]) for j in range(nx + 1)])
             # set x and y dofs equal for left and right nodes
             if i != self.n_node_rows - 1:
-                o3.EqualDOF(self.osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
+                o3.EqualDOF(self.osi, sn[i][0], sn[i][-1], [o3.cc.DOF2D_X, o3.cc.DOF2D_Y])
         sn = np.array(sn)
 
         if self.base_imp < 0:
@@ -170,8 +170,8 @@ class SRA1D(object):
             if self.base_imp == 0:
                 sl = self.sp.get_soil_at_depth(self.sp.height)
                 base_imp = sl.unit_dry_mass * self.sp.get_shear_vel_at_depth(self.sp.height)
-            c_base = self.ele_width * base_imp / 1e3
-            dashpot_mat = o3.uniaxial_material.Viscous(self.osi, c_base, alpha=1.)
+            self.c_base = self.ele_width * base_imp / 1e3
+            dashpot_mat = o3.uniaxial_material.Viscous(self.osi, self.c_base, alpha=1.)
             o3.element.ZeroLength(self.osi, [dashpot_node_l, dashpot_node_2], mats=[dashpot_mat], dirs=[o3.cc.DOF2D_X])
 
         self.o3res = o3.results.Results2D(cache_path=self.cache_path)
@@ -182,7 +182,7 @@ class SRA1D(object):
         for ele in self.eles:
             self.o3res.mat2ele_tags.append([ele.mat.tag, ele.tag])
 
-    def execute_static(self):
+    def execute_static(self, ray_freqs=(0.5, 10), xi=0.03):
         # Static analysis
         o3.constraints.Transformation(self.osi)
         o3.test.NormDispIncr(self.osi, tol=1.0e-5, max_iter=30, p_flag=0)
@@ -191,8 +191,15 @@ class SRA1D(object):
         o3.system.ProfileSPD(self.osi)
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
         o3.analysis.Transient(self.osi)
-        o3.analyze(self.osi, 10, 500.)
-        # o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
+        omega_1 = 2 * np.pi * ray_freqs[0]
+        omega_2 = 2 * np.pi * ray_freqs[1]
+        a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
+        a1 = 2 * xi / (omega_1 + omega_2)
+        o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
+        o3.analyze(self.osi, 1000, 5.)
+        if self.opfile:
+            o3.extensions.to_py_file(self.osi, self.opfile)
+            o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         for i in range(len(self.soil_mats)):
             if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
