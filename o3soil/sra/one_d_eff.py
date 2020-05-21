@@ -1,6 +1,4 @@
 import numpy as np
-import sfsimodels as sm
-import openseespy.opensees as opy
 import o3seespy as o3
 import o3seespy.extensions
 import copy
@@ -8,7 +6,7 @@ import os
 from o3soil.sra.output import O3SRAOutputs
 
 
-class SRA1D(object):
+class ESSRA1D(object):
     osi = None
 
     def __init__(self, sp, dy=0.5, k0=0.5, base_imp=0, cache_path=None, opfile=None):
@@ -335,9 +333,9 @@ class SRA1D(object):
             self.o3res.save_to_cache()
 
 
-def run_sra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
+def run_essra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
                   base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False):
-    sra_1d = SRA1D(sp, dy=dy, k0=k0, base_imp=base_imp, cache_path=cache_path, opfile=opfile)
+    sra_1d = ESSRA1D(sp, dy=dy, k0=k0, base_imp=base_imp, cache_path=cache_path, opfile=opfile)
     sra_1d.build_model()
     sra_1d.execute_static()
     if hasattr(sra_1d.sp, 'hloads'):
