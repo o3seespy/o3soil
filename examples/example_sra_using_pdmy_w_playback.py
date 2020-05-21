@@ -26,7 +26,7 @@ def run(out_folder, dytime=None):
     sp = sm.SoilProfile()
     sp.add_layer(0, sl)
 
-    sp.height = 3.0
+    sp.height = 15.0
 
     # ecp_out = sm.Output()
     # ecp_out.add_to_dict(sp)
@@ -64,7 +64,7 @@ def run(out_folder, dytime=None):
         sps[0].plot(outputs["time"], outputs["TAU"][ind_3m], ls='--')
         sps[0].plot(outputs["time"], outputs["TAU"][ind_6m], ls='--', c='r')
         sps[0].plot(outputs["time"], outputs["TAU"][ind_12m], ls='--')
-        sps[2].plot(outputs["time"], outputs["STRS"][ind_6m], ls='--', c='r')
+        sps[2].plot(outputs["time"], outputs["ACCX"][0], ls='--', c='r')
         sps[1].plot(outputs['STRS'][ind_6m], outputs['TAU'][ind_6m], c='r')
         # sps[1].plot(outputs['STRS'][3], sl.g_mod / 1e3 * outputs['STRS'][3], ls='--')
         # sps[2].plot(outputs["time"], outputs["ACCX"][5], ls='--')
@@ -78,8 +78,8 @@ if __name__ == '__main__':
     out_folder = OP_PATH + name + '/'
     if not os.path.exists(out_folder):
         os.makedirs(out_folder)
-    run(dytime=1, out_folder=out_folder)
+    run(dytime=10, out_folder=out_folder)
     import o3seespy as o3
     o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
     o3res.load_from_cache()
-    o3plot.replot(o3res, xmag=0.5, t_scale=1)
+    o3plot.replot(o3res, xmag=2.0, t_scale=1)

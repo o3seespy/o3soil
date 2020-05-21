@@ -354,7 +354,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     if analysis_time is None:
         analysis_time = asig.time[-1]
     if outs is None:
-        outs = {'ACCX': [0]}  # Export the horizontal acceleration at the surface
+        outs = {'ACCX': 'all'}  # Export the horizontal acceleration at the surface
     if rec_dt is None:
         rec_dt = analysis_dt
     else:
@@ -442,15 +442,17 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
                      # 'n_surf': 25
                      }
         # Define material
-        if sl.type == 'pm4sand':
+        if not hasattr(sl, 'o3_type'):
+            sl.o3_type = sl.type
+        if sl.o3_type == 'pm4sand':
             sl_class = o3.nd_material.PM4Sand
             # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
             app2mod = sl.app2mod
-        elif sl.type == 'sdmodel':
+        elif sl.o3_type == 'sdmodel':
             sl_class = o3.nd_material.StressDensity
             # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
             app2mod = sl.app2mod
-        elif sl.type in ['pimy', 'pdmy', 'pdmy02']:
+        elif sl.o3_type in ['pimy', 'pdmy', 'pdmy02']:
             if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
                 if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
                     v_eff = sp.get_v_eff_stress_at_depth(y_depth)
@@ -471,13 +473,14 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
             overrides['p_ref'] = p / 1e3
             overrides['g_mod_ref'] = g_mod_r
             overrides['bulk_mod_ref'] = b_mod
-            if sl.type == 'pimy':
+            if sl.o3_type == 'pimy':
                 overrides['cohesion'] = sl.cohesion / 1e3
                 sl_class = o3.nd_material.PressureIndependMultiYield
-            elif sl.type == 'pdmy':
+            elif sl.o3_type == 'pdmy':
                 sl_class = o3.nd_material.PressureDependMultiYield
-            elif sl.type == 'pdmy02':
+            elif sl.o3_type == 'pdmy02':
                 sl_class = o3.nd_material.PressureDependMultiYield02
+                app2mod['e_init'] = 'e_curr'
         else:
             sl_class = o3.nd_material.ElasticIsotropic
             sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3

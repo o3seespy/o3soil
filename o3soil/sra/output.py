@@ -35,7 +35,7 @@ class O3SRAOutputs(object):
                 if isinstance(outs[otype], str) and outs[otype] == 'all':
 
                     if otype == 'ACCX':
-                        rd['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_Y], res_type='accel',
+                        rd['ACCX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_X], res_type='accel',
                                                                 dt=rec_dt)
                     if otype == 'DISPX':
                         rd['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=self.nodes, dofs=[o3.cc.DOF2D_X], res_type='disp',
