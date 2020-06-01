@@ -19,7 +19,10 @@ def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=Tr
     axis: str
         The axis which the foundation would rotate around
     dettach
-    soil_nl
+    soil_nl: str
+        'lin'
+        'epp'
+        'pro'
 
     Returns
     -------
@@ -64,8 +67,8 @@ def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=Tr
         q_ult = gf.capacity_salgado_2008(sl, fd)
         f_ult = q_ult * fd.area
         f_spring = f_ult / n_springs / 1.3  # TODO: should exterior be different? -should be divide by n_springs, end should be different
-        int_spring_mat_1 = o3.uniaxial_material.Steel02(osi, f_spring, k_spring, b=0.05, params=[5, 0.925, 0.15])
-        ext_spring_mat_1 = o3.uniaxial_material.Steel02(osi, f_spring, r_k * k_spring, b=0.05, params=[5, 0.925, 0.15])
+        int_spring_mat_1 = o3.uniaxial_material.SteelMPF(osi, f_spring, f_spring, k_spring, 0.05, 0.05, params=[5, 0.925, 0.15])
+        ext_spring_mat_1 = o3.uniaxial_material.SteelMPF(osi, f_spring, f_spring, r_k * k_spring, 0.05, 0.05, params=[5, 0.925, 0.15])
         if dettach:
             mat_obj2 = o3.uniaxial_material.Elastic(osi, 1000 * k_spring, eneg=0.0001 * k_spring)
             int_spring_mat = o3.uniaxial_material.Series(osi, [int_spring_mat_1, mat_obj2])

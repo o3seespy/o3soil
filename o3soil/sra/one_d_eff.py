@@ -10,6 +10,20 @@ class ESSRA1D(object):
     osi = None
 
     def __init__(self, sp, dy=0.5, k0=0.5, base_imp=0, cache_path=None, opfile=None):
+        """
+
+        Parameters
+        ----------
+        sp
+        dy
+        k0
+        base_imp: float
+            If positive then use as impedence at base of model,
+            If zero then use last soil layer
+            If negative then use fixed base
+        cache_path
+        opfile
+        """
         self.sp = sp
         sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
         thicknesses = sp.split["thickness"]
@@ -65,8 +79,8 @@ class ESSRA1D(object):
             self.osi.reset_model_params(2, ndf=2)
             dashpot_node_l = o3.node.Node(self.osi, 0, self.node_depths[-1])
             dashpot_node_2 = o3.node.Node(self.osi, 0, self.node_depths[-1])
-            o3.Fix3DOF(self.osi, dashpot_node_l, o3.cc.FIXED, o3.cc.FIXED, o3.cc.FREE)
-            o3.Fix3DOF(self.osi, dashpot_node_2, o3.cc.FREE, o3.cc.FIXED, o3.cc.FREE)
+            o3.Fix2DOF(self.osi, dashpot_node_l, o3.cc.FIXED, o3.cc.FIXED)
+            o3.Fix2DOF(self.osi, dashpot_node_2, o3.cc.FREE, o3.cc.FIXED)
 
             # define equal DOF for dashpot and soil base nodes
             o3.EqualDOF(self.osi, sn[-1][0], sn[-1][1], [o3.cc.X])
@@ -146,8 +160,9 @@ class ESSRA1D(object):
                     elif sl.o3_type == 'pdmy02':
                         sl_class = o3.nd_material.PressureDependMultiYield02
                 else:
+                    g_mod = self.sp.split['shear_vel'][i] ** 2 / self.unit_masses[i]
                     sl_class = o3.nd_material.ElasticIsotropic
-                    sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
+                    sl.e_mod = 2 * g_mod * (1 - sl.poissons_ratio)
                     overrides['nu'] = sl.poissons_ratio
                     app2mod['rho'] = 'unit_moist_mass'
                 args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
@@ -190,9 +205,11 @@ class ESSRA1D(object):
 
     def execute_static(self, ray_freqs=(0.5, 10), xi=0.03):
         # Static analysis
+        for i in range(len(self.soil_mats)):  # TODO: should be a method on object 'update_to_linear'
+            o3.update_material_stage(self.osi, self.soil_mats[i], 0)
         o3.constraints.Transformation(self.osi)
         o3.test.NormDispIncr(self.osi, tol=1.0e-5, max_iter=30, p_flag=0)
-        o3.algorithm.Newton(self.osi)
+        o3.algorithm.KrylovNewton(self.osi)
         o3.numberer.RCM(self.osi)
         o3.system.ProfileSPD(self.osi)
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
@@ -334,13 +351,38 @@ class ESSRA1D(object):
 
 
 def run_essra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False):
+                  base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False, rec_dt=None):
+    """
+
+    Parameters
+    ----------
+    sp
+    asig
+    ray_freqs
+    xi
+    analysis_dt
+    dy
+    analysis_time
+    outs
+    base_imp: float
+        If positive then use as impedence at base of model,
+        If zero then use last soil layer
+        If negative then use fixed base
+    k0
+    cache_path
+    opfile
+    playback
+
+    Returns
+    -------
+
+    """
     sra_1d = ESSRA1D(sp, dy=dy, k0=k0, base_imp=base_imp, cache_path=cache_path, opfile=opfile)
     sra_1d.build_model()
     sra_1d.execute_static()
     if hasattr(sra_1d.sp, 'hloads'):
         sra_1d.apply_loads()
     sra_1d.execute_dynamic(asig, analysis_dt=analysis_dt, ray_freqs=ray_freqs, xi=xi, analysis_time=analysis_time,
-                           outs=outs, playback=playback, playback_dt=0.01)
+                           outs=outs, playback=playback, playback_dt=0.01, rec_dt=rec_dt)
     return sra_1d
 

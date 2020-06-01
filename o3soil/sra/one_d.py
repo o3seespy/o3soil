@@ -10,8 +10,22 @@ class SRA1D(object):
     osi = None
 
     def __init__(self, sp, dy=0.5, k0=0.5, base_imp=0, cache_path=None, opfile=None):
+        """
+
+        Parameters
+        ----------
+        sp
+        dy
+        k0
+        base_imp: float
+            If positive then use as impedence at base of model,
+            If zero then use last soil layer
+            If negative then use fixed base
+        cache_path
+        opfile
+        """
         self.sp = sp
-        sp.gen_split(props=['unit_mass'], target=dy)
+        sp.gen_split(props=['shear_vel', 'unit_mass'], target=dy)
         thicknesses = sp.split["thickness"]
         self.n_node_rows = len(thicknesses) + 1
         node_depths = -np.cumsum(sp.split["thickness"])
@@ -144,8 +158,9 @@ class SRA1D(object):
                     elif sl.o3_type == 'pdmy02':
                         sl_class = o3.nd_material.PressureDependMultiYield02
                 else:
+                    g_mod = self.sp.split['shear_vel'][i] ** 2 / self.unit_masses[i]
                     sl_class = o3.nd_material.ElasticIsotropic
-                    sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
+                    sl.e_mod = 2 * g_mod * (1 - sl.poissons_ratio)
                     overrides['nu'] = sl.poissons_ratio
                     app2mod['rho'] = 'unit_moist_mass'
                 args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
@@ -195,8 +210,8 @@ class SRA1D(object):
         omega_2 = 2 * np.pi * ray_freqs[1]
         a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
         a1 = 2 * xi / (omega_1 + omega_2)
-        o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
-        o3.analyze(self.osi, 1000, 5.)
+        #o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
+        o3.analyze(self.osi, 10, 500.)
         if self.opfile:
             o3.extensions.to_py_file(self.osi, self.opfile)
             o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
@@ -212,7 +227,6 @@ class SRA1D(object):
 
         # reset time and analysis
         o3.wipe_analysis(self.osi)
-        self.o3res.coords = o3.get_all_node_coords(self.osi)
 
     def get_nearest_node_layer_at_depth(self, depth):
         # Convert to positive since node depths go downwards
@@ -271,6 +285,8 @@ class SRA1D(object):
             self.rec_dt = asig.dt
         if playback_dt is None:
             self.playback_dt = asig.dt
+        if analysis_time is None:
+            analysis_time = asig.time[-1]
         o3.set_time(self.osi, 0.0)
 
         # Define the dynamic analysis
@@ -325,20 +341,45 @@ class SRA1D(object):
 
 
 def run_sra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False):
+                  base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False, rec_dt=None):
+    """
+
+    Parameters
+    ----------
+    sp
+    asig
+    ray_freqs
+    xi
+    analysis_dt
+    dy
+    analysis_time
+    outs
+    base_imp: float
+        If positive then use as impedence at base of model,
+        If zero then use last soil layer
+        If negative then use fixed base
+    k0
+    cache_path
+    opfile
+    playback
+
+    Returns
+    -------
+
+    """
     sra_1d = SRA1D(sp, dy=dy, k0=k0, base_imp=base_imp, cache_path=cache_path, opfile=opfile)
     sra_1d.build_model()
     sra_1d.execute_static()
     if hasattr(sra_1d.sp, 'hloads'):
         sra_1d.apply_loads()
     sra_1d.execute_dynamic(asig, analysis_dt=analysis_dt, ray_freqs=ray_freqs, xi=xi, analysis_time=analysis_time,
-                           outs=outs, playback=playback, playback_dt=0.01)
+                           outs=outs, playback=playback, playback_dt=0.01, rec_dt=rec_dt)
     return sra_1d
 
 
 
 def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  rec_dt=None, base_imp=0, cache_path=None, opfile=None):
+                  rec_dt=None, base_imp=0, cache_path=None, opfile=None, playback=False):
     """
     Run seismic analysis of a soil profile - example based on:
     http://opensees.berkeley.edu/wiki/index.php/Site_Response_Analysis_of_a_Layered_Soil_Column_(Total_Stress_Analysis)
@@ -489,8 +530,9 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
                 sl_class = o3.nd_material.PressureDependMultiYield02
                 app2mod['e_init'] = 'e_curr'
         else:
+            g_mod = sp.split['shear_vel'][i] ** 2 / unit_masses[i]
             sl_class = o3.nd_material.ElasticIsotropic
-            sl.e_mod = 2 * sl.g_mod * (1 - sl.poissons_ratio) / 1e3
+            sl.e_mod = 2 * g_mod * (1 - sl.poissons_ratio)
             overrides['nu'] = sl.poissons_ratio
             app2mod['rho'] = 'unit_moist_mass'
         args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
@@ -518,6 +560,9 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         dashpot_mat = o3.uniaxial_material.Viscous(osi, c_base, alpha=1.)
         o3.element.ZeroLength(osi, [dashpot_node_l, dashpot_node_2], mats=[dashpot_mat], dirs=[o3.cc.DOF2D_X])
 
+    coords = o3.get_all_node_coords(osi)
+    ele_node_tags = o3.get_all_ele_node_tags_as_dict(osi)
+
     # Static analysis
     o3.constraints.Transformation(osi)
     o3.test.NormDispIncr(osi, tol=1.0e-5, max_iter=30, p_flag=0)
@@ -540,11 +585,9 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     # reset time and analysis
     o3.wipe_analysis(osi)
     o3.set_time(osi, 0.0)
-
-    coords = o3.get_all_node_coords(osi)
-    ele_node_tags = o3.get_all_ele_node_tags_as_dict(osi)
-    all_node_xdisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_X], 'disp', nsd=4)
-    all_node_ydisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
+    if playback:
+        all_node_xdisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_X], 'disp', nsd=4)
+        all_node_ydisp_rec = o3.recorder.NodesToArrayCache(osi, 'all', [o3.cc.DOF2D_Y], 'disp', nsd=4)
 
     if hasattr(sp, 'hloads'):
         # Define the dynamic analysis
@@ -600,6 +643,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     if state == 3:
         o3.extensions.to_py_file(osi, opfile)
     # Run the dynamic motion
+    o3.record(osi)
     while o3.get_time(osi) - init_time < analysis_time:
         if o3.analyze(osi, 1, analysis_dt):
             print('failed')
@@ -614,8 +658,9 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         o3res.cache_path = cache_path
         o3res.coords = coords
         o3res.ele2node_tags = ele_node_tags
-        o3res.x_disp = all_node_xdisp_rec.collect()
-        o3res.y_disp = all_node_ydisp_rec.collect()
+        if playback:
+            o3res.x_disp = all_node_xdisp_rec.collect()
+            o3res.y_disp = all_node_ydisp_rec.collect()
         o3res.save_to_cache()
 
     return out_dict
