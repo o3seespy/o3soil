@@ -205,8 +205,8 @@ class ESSRA1D(object):
 
     def execute_static(self, ray_freqs=(0.5, 10), xi=0.03):
         # Static analysis
-        for i in range(len(self.soil_mats)):  # TODO: should be a method on object 'update_to_linear'
-            o3.update_material_stage(self.osi, self.soil_mats[i], 0)
+        # for i in range(len(self.soil_mats)):  # TODO: should be a method on object 'update_to_linear'
+        #     o3.update_material_stage(self.osi, self.soil_mats[i], 0)
         o3.constraints.Transformation(self.osi)
         o3.test.NormDispIncr(self.osi, tol=1.0e-5, max_iter=30, p_flag=0)
         o3.algorithm.KrylovNewton(self.osi)
@@ -218,7 +218,7 @@ class ESSRA1D(object):
         omega_2 = 2 * np.pi * ray_freqs[1]
         a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
         a1 = 2 * xi / (omega_1 + omega_2)
-        o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
+        # o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
         o3.analyze(self.osi, 1000, 5.)
         if self.opfile:
             o3.extensions.to_py_file(self.osi, self.opfile)
@@ -296,7 +296,7 @@ class ESSRA1D(object):
         if rec_dt is None:
             self.rec_dt = asig.dt
         if playback_dt is None:
-            self.playback_dt = asig.dt
+            self.playback_dt = analysis_dt
         o3.set_time(self.osi, 0.0)
 
         # Define the dynamic analysis
