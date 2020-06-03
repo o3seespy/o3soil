@@ -221,8 +221,8 @@ class ESSRA1D(object):
         # o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
         o3.analyze(self.osi, 1000, 5.)
         if self.opfile:
-            o3.extensions.to_py_file(self.osi, self.opfile)
-            o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
+            o3.extensions.to_py_file(self.osi, self.opfile, compress=True)
+            # o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         for i in range(len(self.soil_mats)):
             if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
@@ -333,7 +333,7 @@ class ESSRA1D(object):
             o3.pattern.Plain(self.osi, ts_obj)
             o3.Load(self.osi, self.sn[-1][0], [1., 0., 0])
         if self.state == 3:
-            o3.extensions.to_py_file(self.osi, self.opfile)
+            o3.extensions.to_py_file(self.osi, self.opfile, compress=True)
         # Run the dynamic motion
         o3.record(self.osi)
         while o3.get_time(self.osi) - init_time < analysis_time:
