@@ -82,7 +82,7 @@ class O3SRAOutputs(object):
                         nodes = sn[:, 0]
                     rd['DISPX'] = o3.recorder.NodesToArrayCache(osi, nodes=nodes, dofs=[o3.cc.X], res_type='disp',
                                                                 dt=rec_dt)
-
+        rd['TIME'] = o3.recorder.TimeToArrayCache(osi, dt=rec_dt)
         self.rd = rd
         self.srd = srd
 
@@ -160,4 +160,5 @@ class O3SRAOutputs(object):
                 self.out_dict['time'] = np.arange(0, len(self.out_dict['ACCX'][0])) * self.rec_dt
             elif 'TAU' in self.out_dict:
                 self.out_dict['time'] = np.arange(0, len(self.out_dict['TAU'][0])) * self.rec_dt
+        self.out_dict['TIME'] = self.rd['TIME'].collect()
         return self.out_dict
