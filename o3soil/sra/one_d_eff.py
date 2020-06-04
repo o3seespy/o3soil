@@ -176,11 +176,14 @@ class ESSRA1D(object):
                     self.soil_mats.append(mat)
 
             # def element
+            if hasattr(self.sp, 'water_bulk_mod') and self.sp.water_bulk_mod is not None:
+                k_water = self.sp.water_bulk_mod
+            else:
+                k_water = 2.2e6
             for xx in range(nx):
                 nodes = [sn[i + 1][xx], sn[i + 1][xx + 1], sn[i][xx + 1], sn[i][xx]]  # anti-clockwise
                 # eles.append(o3.element.Quad(self.osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=-grav * unit_masses[i]))
                 # osi, ele_nodes, mat, thick, f_bulk, f_den, k1, k2, void, alpha, b1=0.0, b2=0.0
-                k_water = 2.2e6
                 a_sspquad_up = 6.0e-5
                 self.eles.append(o3.element.SSPquadUP(self.osi, nodes, mat, ele_thick, k_water, f_den=1.0, k1=sl.permeability,
                                                       k2=sl.permeability, void=sl.e_curr, alpha=a_sspquad_up,
@@ -220,8 +223,8 @@ class ESSRA1D(object):
         a1 = 2 * xi / (omega_1 + omega_2)
         # o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
         o3.analyze(self.osi, 1000, 5.)
-        if self.opfile:
-            o3.extensions.to_py_file(self.osi, self.opfile, compress=True)
+        # if self.opfile:
+        #     o3.extensions.to_py_file(self.osi, self.opfile, compress=True)
             # o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         for i in range(len(self.soil_mats)):

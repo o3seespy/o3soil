@@ -2,8 +2,10 @@ import o3seespy as o3
 import numpy as np
 
 
-def run_vload(osi, mat, v_pressure, nu_dyn=None):
-
+def run_vload(mat, v_pressure, osi=None, nu_dyn=None):
+    if osi is None:
+        osi = o3.OpenSeesInstance(ndm=2, ndf=2)
+        mat.build(osi)
     h_ele = 1.
     nodes = [
         o3.node.Node(osi, 0.0, 0.0),
@@ -56,10 +58,9 @@ def run_vload(osi, mat, v_pressure, nu_dyn=None):
     return ods['stresses'], ods['strains']
 
 
-def run_example():
+def run_example(show=0):
     osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
 
-    import matplotlib.pyplot as plt
     esig_v0 = 50.0e3
     poissons_ratio = 0.3
     g_mod = 1.0e6
@@ -67,10 +68,11 @@ def run_example():
 
     mat = o3.nd_material.PressureIndependMultiYield(osi, 2, 2058.49, g_mod, b_mod, 68000.0, 0.1, 0.0, 100000.0, 0.0, 25)
     # mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e6, nu=0.3)
-    ss, es = run_vload(osi, mat, v_pressure=esig_v0)
-    print(ss[-1])
-    plt.plot(es[:, 1], ss[:, 1])
-    plt.show()
+    ss, es = run_vload(mat, v_pressure=esig_v0, osi=osi)
+    if show:
+        import matplotlib.pyplot as plt
+        plt.plot(es[:, 1], ss[:, 1])
+        plt.show()
 
 
 if __name__ == '__main__':

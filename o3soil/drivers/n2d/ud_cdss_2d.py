@@ -2,13 +2,18 @@ import o3seespy as o3
 import math
 
 
-def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None, opyfile=None, strain_limit=0.03, strain_inc=5.0e-6):
+def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=None, opyfile=None,
+                strain_limit=0.03, strain_inc=5.0e-6, verbose=0):
     """Undrained cyclic simple shear test for 2d element"""
     damp = 0.02
     omega0 = 0.2
     omega1 = 20.0
     a1 = 2. * damp / (omega0 + omega1)
     a0 = a1 * omega0 * omega1
+
+    if osi is None:
+        osi = o3.OpenSeesInstance(ndm=2, ndf=2)
+        mat.build(osi)
 
     # Establish nodes
     h_ele = 1.
@@ -68,13 +73,18 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
     for node in all_nodes:
         o3.remove_sp(osi, node, dof=3)
     o3.analyze(osi, 25, dt=1)
-    print('here3: ', o3.get_ele_response(osi, ele, 'stress'), esig_v0, csr)
+    if verbose:
+        print('Finished applying vert load: ', o3.get_ele_response(osi, ele, 'stress'))
 
-    o3.update_material_stage(osi, mat, stage=1)
-    o3.set_parameter(osi, value=0, eles=[ele], args=['FirstCall', mat.tag])
+    if hasattr(mat, 'update_to_nonlinear'):
+        mat.update_to_nonlinear()
+        o3.analyze(osi, 25, dt=1)
+    if hasattr(mat, 'set_first_call'):
+        mat.set_first_call(value=0, ele=ele)
+    # o3.set_parameter(osi, value=0, eles=[ele], args=['FirstCall', mat.tag])
     o3.analyze(osi, 25, dt=1)
     if nu_dyn is not None:
-        mat.set_nu(osi, nu_dyn, eles=[ele])
+        mat.set_nu(nu_dyn, ele=ele)
 
     n_cyc = 0.0
     target_strain = 1.1 * strain_limit
@@ -82,7 +92,8 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
     limit_reached = 0
 
     while n_cyc < n_lim:
-        print('n_cyc: ', n_cyc)
+        if verbose:
+            print('n_cyc: ', n_cyc)
         h_disp = o3.get_node_disp(osi, tr_node, o3.cc.X)
         curr_time = o3.get_time(osi)
         steps = target_strain / strain_inc
@@ -102,13 +113,15 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
             h_disp = o3.get_node_disp(osi, tr_node, o3.cc.X)
 
             if h_disp >= target_disp:
-                print('STRAIN LIMIT REACHED - on load')
+                if verbose:
+                    print('STRAIN LIMIT REACHED - on load')
                 limit_reached = 1
                 break
         if limit_reached:
             break
         n_cyc += 0.25
-        print('load reversal, n_cyc: ', n_cyc)
+        if verbose:
+            print('load reversal, n_cyc: ', n_cyc)
         curr_time = o3.get_time(osi)
         o3.remove_load_pattern(osi, pat0)
         o3.remove(osi, ts0)
@@ -126,7 +139,8 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
             h_disp = o3.get_node_disp(osi, tr_node, o3.cc.X)
 
             if -h_disp >= target_disp:
-                print('STRAIN LIMIT REACHED - on reverse')
+                if verbose:
+                    print('STRAIN LIMIT REACHED - on reverse')
                 limit_reached = 1
                 break
             i += 1
@@ -135,7 +149,8 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
         if limit_reached:
             break
         n_cyc += 0.5
-        print('reload, n_cyc: ', n_cyc)
+        if verbose:
+            print('reload, n_cyc: ', n_cyc)
         curr_time = o3.get_time(osi)
         o3.remove_load_pattern(osi, pat0)
         o3.remove(osi, ts0)
@@ -152,7 +167,8 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
             h_disp = o3.get_node_disp(osi, tr_node, o3.cc.X)
 
             if h_disp >= target_disp:
-                print('STRAIN LIMIT REACHED - on reload')
+                if verbose:
+                    print('STRAIN LIMIT REACHED - on reload')
                 limit_reached = 1
                 break
         if limit_reached:
@@ -173,7 +189,7 @@ def run_ud_cdss(osi, mat, esig_v0, csr, static_bias=0.0, n_lim=100, nu_dyn=None,
     return stress, strain, ppt, disps
 
 
-def run_example():
+def run_example(show=0):
     import o3seespy as o3
 
     esig_v0 = 101.3
@@ -197,23 +213,24 @@ def run_example():
     mat = o3.nd_material.PM4Sand(osi, relative_density, g0_mod, h_po, unit_sat_mass, p_atm, nu=nu_init)
     # mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e10, nu=0.3)  # TODO: not working with the elastic model!!!
     # nu_dyn = None
-    stress, strain, ppt, disps = run_ud_cdss(osi, mat, csr=csr, n_lim=20, strain_limit=0.03, nu_dyn=nu_dyn,
-                                                esig_v0=esig_v0, strain_inc=strain_inc, opyfile='ss.py')
+    stress, strain, ppt, disps = run_ud_cdss(mat, csr=csr, osi=osi, n_lim=20, strain_limit=0.03, nu_dyn=nu_dyn,
+                                                esig_v0=esig_v0, strain_inc=strain_inc, opyfile='ss.py', verbose=0)
 
-    import matplotlib.pyplot as plt
-    bf, sps = plt.subplots(nrows=2)
-    sps[0].plot(stress, label='shear')
-    sps[0].plot(ppt, label='PPT')
-    sps[1].plot(strain, stress, label='o3seespy')
+    if show:
+        import matplotlib.pyplot as plt
+        bf, sps = plt.subplots(nrows=2)
+        sps[0].plot(stress, label='shear')
+        sps[0].plot(ppt, label='PPT')
+        sps[1].plot(strain, stress, label='o3seespy')
 
-    sps[0].set_xlabel('Time [s]')
-    sps[0].set_ylabel('Stress [kPa]')
-    sps[1].set_xlabel('Strain')
-    sps[1].set_ylabel('Stress [kPa]')
-    sps[0].legend()
-    sps[1].legend()
+        sps[0].set_xlabel('Time [s]')
+        sps[0].set_ylabel('Stress [kPa]')
+        sps[1].set_xlabel('Strain')
+        sps[1].set_ylabel('Stress [kPa]')
+        sps[0].legend()
+        sps[1].legend()
 
-    plt.show()
+        plt.show()
 
 
 if __name__ == '__main__':
