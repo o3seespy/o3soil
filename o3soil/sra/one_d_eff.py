@@ -351,6 +351,7 @@ class ESSRA1D(object):
                 print('failed')
                 if o3.analyze(self.osi, 10, analysis_dt / 10):
                     break
+            curr_time = o3.get_time(self.osi)
         o3.wipe(self.osi)
         self.out_dict = self.o3sra_outs.results_to_dict()
 
