@@ -9,7 +9,7 @@ from o3soil.sra.output import O3SRAOutputs
 class ESSRA1D(object):
     osi = None
 
-    def __init__(self, sp, dy=0.5, k0=0.5, base_imp=0, cache_path=None, opfile=None):
+    def __init__(self, sp, dy=0.5, k0=0.5, base_imp=0, cache_path=None, opfile=None, verbose=0):
         """
 
         Parameters
@@ -45,6 +45,7 @@ class ESSRA1D(object):
         self.soil_mats = None
         self.eles = None
         self.sn = None  # soil nodes
+        self.verbose = verbose
 
     def build_model(self):
         # Define nodes and set boundary conditions for simple shear deformation
@@ -229,11 +230,14 @@ class ESSRA1D(object):
 
         for i in range(len(self.soil_mats)):
             if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
-                self.soil_mats[i].update_to_nonlinear(self.osi)
+                self.soil_mats[i].update_to_nonlinear()
+
         for ele in self.eles:
             mat = ele.mat
             if hasattr(mat, 'set_nu'):
                 mat.set_nu(mat.dynamic_poissons_ratio, eles=[ele])
+            if hasattr(mat, 'set_first_call'):
+                mat.set_first_call(value=0, ele=ele)
                 # TODO: set_dynamic permeability
         o3.analyze(self.osi, 40, 500.)
 
@@ -339,7 +343,10 @@ class ESSRA1D(object):
             o3.extensions.to_py_file(self.osi, self.opfile, compress=True)
         # Run the dynamic motion
         o3.record(self.osi)
-        while o3.get_time(self.osi) - init_time < analysis_time:
+        curr_time = o3.get_time(self.osi)
+        while curr_time - init_time < analysis_time:
+            if self.verbose:
+                print('time: ', curr_time)
             if o3.analyze(self.osi, 1, analysis_dt):
                 print('failed')
                 if o3.analyze(self.osi, 10, analysis_dt / 10):
@@ -354,7 +361,7 @@ class ESSRA1D(object):
 
 
 def run_essra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5, analysis_time=None, outs=None,
-                  base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False, rec_dt=None):
+                  base_imp=0, k0=0.5, cache_path=None, opfile=None, playback=False, rec_dt=None, verbose=0):
     """
 
     Parameters
@@ -380,7 +387,7 @@ def run_essra(sp, asig, ray_freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
     -------
 
     """
-    sra_1d = ESSRA1D(sp, dy=dy, k0=k0, base_imp=base_imp, cache_path=cache_path, opfile=opfile)
+    sra_1d = ESSRA1D(sp, dy=dy, k0=k0, base_imp=base_imp, cache_path=cache_path, opfile=opfile, verbose=verbose)
     sra_1d.build_model()
     sra_1d.execute_static()
     if hasattr(sra_1d.sp, 'hloads'):

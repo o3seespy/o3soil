@@ -148,7 +148,6 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
     # Set out-of-plane DOFs to be slaved
     o3.EqualDOF(osi, nodes[2], nodes[3], [o3.cc.X, o3.cc.Y])
 
-    # ele = o3.element.SSPquad(osi, nodes, mat, 'PlaneStrain', 1, 0.0, 0.0)
     water_bulk_mod = 2.2e6
     ele = o3.element.SSPquadUP(osi, nodes, mat, 1.0, water_bulk_mod, 1.,
                                1.0e-4, 1.0e-4, 0.6, alpha=1.0e-5, b1=0.0, b2=0.0)
@@ -158,22 +157,19 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
     o3.algorithm.Newton(osi)
     o3.numberer.RCM(osi)
     o3.system.FullGeneral(osi)
-    o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_Y, 0.005)
-    # o3.rayleigh.Rayleigh(osi, a0, a1, 0.0, 0.0)
-    o3.analysis.Static(osi)
-    o3.update_material_stage(osi, mat, stage=0)
+    o3.integrator.Newmark(osi, gamma=5. / 6, beta=4. / 9)
+    o3.rayleigh.Rayleigh(osi, a0, a1, 0.0, 0.0)
+    o3.analysis.Transient(osi)
 
     # Add static vertical pressure and stress bias
-    # time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
-    # o3.pattern.Plain(osi, time_series)
     time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
     o3.pattern.Plain(osi, time_series)
     o3.Load(osi, nodes[2], [0, -esig_v0 / 2, 0])
     o3.Load(osi, nodes[3], [0, -esig_v0 / 2, 0])
 
     o3.analyze(osi, num_inc=110, dt=1)
-    stresses = o3.get_ele_response(osi, ele, 'stress')
-    print('init_stress0: ', stresses)
+    init_stresses = o3.get_ele_response(osi, ele, 'stress')
+    print('init_stress0: ', init_stresses)
 
     ts2 = o3.time_series.Path(osi, time=[110, 80000, 1e10], values=[1., 1., 1.], factor=1)
     o3.pattern.Plain(osi, ts2, fact=1.)
@@ -196,13 +192,12 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
         mat.set_nu(nu_dyn, ele=ele)
         o3.analyze(osi, 25, dt=1)
 
-    o3.load_constant(osi, 0.0)
-
-    # o3.extensions.to_py_file(osi)
-    stresses = o3.get_ele_response(osi, ele, 'stress')
-    print('init_stress1: ', stresses)
+    o3.extensions.to_py_file(osi)
+    curr_stresses = o3.get_ele_response(osi, ele, 'stress')
+    print('init_stress1: ', curr_stresses)
 
     exit_code = None
+    ihd = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)  # initial horizontal displacement
     strain = [0]
     stresses = o3.get_ele_response(osi, ele, 'stress')
     force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
@@ -210,14 +205,14 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
     stress = [-force0 - force1]
     v_eff = [stresses[1]]
     h_eff = [stresses[0]]
-    d_incs = np.diff(disps, prepend=0)
-    return
-    for i in range(len(disps)):
+    target_disps = np.array(disps) + ihd
+
+    for i in range(len(target_disps)):
         h_disp = o3.get_node_disp(osi, nodes[2], o3.cc.X)
         curr_time = o3.get_time(osi)
-        steps = 100
+        steps = int(abs(target_disps[i] - h_disp) / target_d_inc)
         ts0 = o3.time_series.Path(osi, time=[curr_time, curr_time + steps, 1e10],
-                                  values=[h_disp, disps[i], disps[i]],
+                                  values=[h_disp, target_disps[i], target_disps[i]],
                                   factor=1)
         pat0 = o3.pattern.Plain(osi, ts0)
         o3.SP(osi, nodes[2], dof=o3.cc.X, dof_values=[1.0])
@@ -230,19 +225,15 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
                 opyfile = None
             v_eff.append(curr_stresses[1])
             h_eff.append(curr_stresses[0])
-            force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
-            force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
-            stress.append(-force0 - force1)
-            curr_stress = stress[-1]
+            stress.append(curr_stresses[2])
             end_strain = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
-            strain.append(end_strain)
-            print(curr_stress, stresses[i])
+            strain.append(end_strain - ihd)
 
         o3.remove_load_pattern(osi, pat0)
         o3.remove(osi, ts0)
         o3.remove_sp(osi, nodes[2], dof=o3.cc.X)
 
-    return -np.array(stress), -np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
+    return np.array(stress), np.array(strain), -np.array(v_eff), -np.array(h_eff), exit_code
 
 
 def run_ud_custom_stress(mat, esig_v0, stresses, osi=None, nu_dyn=None, target_d_inc=0.00001, handle='silent', verbose=0, opyfile=None):
@@ -334,7 +325,6 @@ def run_ud_custom_stress(mat, esig_v0, stresses, osi=None, nu_dyn=None, target_d
     v_eff = [curr_stresses[1]]
     h_eff = [curr_stresses[0]]
     prev_stress = stress[0]
-    return
     for i in range(len(stresses)):
         if stresses[i] >= prev_stress:
             target_disp = 0.1
@@ -382,4 +372,55 @@ def run_ud_custom_stress(mat, esig_v0, stresses, osi=None, nu_dyn=None, target_d
         o3.remove(osi, ts0)
         o3.remove_sp(osi, nodes[2], dof=o3.cc.X)
 
-    return -np.array(stress), -np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
+    return -np.array(stress), -np.array(strain), -np.array(v_eff), -np.array(h_eff), exit_code
+
+
+def example_of_run_ud_custom_strain(show=0):
+    import o3seespy as o3
+    import liquepy as lq
+
+    esig_v0 = 69.131
+    gravity = 9.8
+
+    sl = lq.num.o3.PM4Sand(liq_mass_density=1.0)
+    sl.relative_density = 0.35
+    sl.g0_mod = 476.0
+    sl.h_po = 0.53
+    sl.unit_sat_weight = 1.42 * gravity
+
+    sl.e_min = 0.5
+    sl.e_max = 0.8
+    sl.poissons_ratio = 0.3
+    sl.phi = 33.
+
+    sl.permeability = 1.0e-9
+    sl.p_atm = 101.0
+
+    peak_strains = [0.0001, -0.001, 0.0002]
+
+    nu_init = sl.poissons_ratio
+    pm4sand = o3.nd_material.PM4Sand(None, sl.relative_density, sl.g0_mod, sl.h_po, sl.unit_sat_mass,
+                                     p_atm=101.3, nu=nu_init)
+
+    stress, strain, vstress, hstress, ecode = run_ud_custom_strain(pm4sand, esig_v0, peak_strains)
+    if show:
+        import matplotlib.pyplot as plt
+        bf, sps = plt.subplots(nrows=3)
+        sps[0].plot(stress, label='shear')
+        sps[0].plot(vstress[0] - vstress, label='PPT')
+        sps[1].plot(strain, stress, label='o3seespy')
+        sps[2].plot(strain, label='o3seespy')
+        for ps in peak_strains:
+            sps[2].axhline(ps, c='k')
+
+        sps[0].set_xlabel('Time [s]')
+        sps[0].set_ylabel('Stress [kPa]')
+        sps[1].set_xlabel('Strain')
+        sps[1].set_ylabel('Stress [kPa]')
+        sps[0].legend()
+        sps[1].legend()
+        plt.show()
+
+
+if __name__ == '__main__':
+    example_of_run_ud_custom_strain(show=1)
