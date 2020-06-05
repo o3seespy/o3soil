@@ -101,6 +101,10 @@ class O3SRAOutputs(object):
     def load_results_from_files(self, outs=None):
         if outs is None:
             outs = ['ACCX', 'TAU', 'STRS', 'time']
+        else:
+            outs = list(outs)
+            if 'time' not in outs:
+                outs.append('time')
         od = {}
         for item in outs:
             od[item] = np.loadtxt(self.cache_path + f'{item}.txt')
