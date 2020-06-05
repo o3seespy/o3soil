@@ -98,9 +98,9 @@ class ESSRA1D(object):
         prev_sl_class = None
         self.eles = []
         for i in range(len(self.ele_depths)):
-            y_depth = self.ele_depths[i]
+            y_depth = -self.ele_depths[i]
 
-            sl_id = self.sp.get_layer_index_by_depth(-y_depth)
+            sl_id = self.sp.get_layer_index_by_depth(y_depth)
             sl = self.sp.layer(sl_id)
 
             if hasattr(sl, 'op_type'):
@@ -134,8 +134,6 @@ class ESSRA1D(object):
                 k_water = 2.2e6
             for xx in range(nx):
                 nodes = [sn[i + 1][xx], sn[i + 1][xx + 1], sn[i][xx + 1], sn[i][xx]]  # anti-clockwise
-                # eles.append(o3.element.Quad(self.osi, nodes, ele_thick, o3.cc.PLANE_STRAIN, mat, b2=-grav * unit_masses[i]))
-                # osi, ele_nodes, mat, thick, f_bulk, f_den, k1, k2, void, alpha, b1=0.0, b2=0.0
                 a_sspquad_up = 6.0e-5
                 self.eles.append(o3.element.SSPquadUP(self.osi, nodes, mat, ele_thick, k_water, f_den=1.0, k1=sl.permeability,
                                                       k2=sl.permeability, void=sl.e_curr, alpha=a_sspquad_up,
@@ -233,7 +231,7 @@ class ESSRA1D(object):
         net_hload = 0
         for i in range(len(self.sp.hloads)):
             pload = self.sp.hloads[i].p_x
-            y = -self.sp.hloads[i].y
+            y = self.sp.hloads[i].y
             ind = self.get_nearest_node_layer_at_depth(y)
             print(i, y, ind)
             if self.sp.loads_are_stresses:

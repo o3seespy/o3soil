@@ -95,9 +95,9 @@ class SRA1D(object):
         prev_sl_class = None
         self.eles = []
         for i in range(len(self.ele_depths)):
-            y_depth = self.ele_depths[i]
+            y_depth = -self.ele_depths[i]
 
-            sl_id = self.sp.get_layer_index_by_depth(-y_depth)
+            sl_id = self.sp.get_layer_index_by_depth(y_depth)
             sl = self.sp.layer(sl_id)
             if hasattr(sl, 'op_type'):
                 if sl.built:
@@ -263,7 +263,7 @@ class SRA1D(object):
         net_hload = 0
         for i in range(len(self.sp.hloads)):
             pload = self.sp.hloads[i].p_x
-            y = -self.sp.hloads[i].y
+            y = self.sp.hloads[i].y
             ind = self.get_nearest_node_layer_at_depth(y)
             print(i, y, ind)
             if self.sp.loads_are_stresses:
