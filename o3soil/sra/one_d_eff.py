@@ -3,6 +3,7 @@ import o3seespy as o3
 import o3seespy.extensions
 import copy
 import os
+import o3soil
 from o3soil.sra.output import O3SRAOutputs
 
 
@@ -110,64 +111,14 @@ class ESSRA1D(object):
                     mat = sl
                     self.soil_mats.append(mat)
             else:
-                app2mod = {}
                 if y_depth > self.sp.gwl:
-                    umass = sl.unit_sat_mass / 1e3  # TODO: work out how to run in Pa, N, m, s
+                    saturated = True
                 else:
-                    umass = sl.unit_dry_mass / 1e3
-                overrides = {'nu': pois, 'p_atm': 101,
-                             'rho': umass,
-                             'unit_moist_mass': umass,
-                             'nd': 2.0,
-                             # 'n_surf': 25
-                             }
-                # Define material
-                if not hasattr(sl, 'o3_type'):
-                    sl.o3_type = sl.type  # for backward compatibility
-                if sl.o3_type == 'pm4sand':
-                    sl_class = o3.nd_material.PM4Sand
-                    # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-                    app2mod = sl.app2mod
-                elif sl.o3_type == 'sdmodel':
-                    sl_class = o3.nd_material.StressDensity
-                    # overrides = {'nu': pois, 'p_atm': 101, 'unit_moist_mass': umass}
-                    app2mod = sl.app2mod
-                elif sl.o3_type in ['pimy', 'pdmy', 'pdmy02']:
-                    if hasattr(sl, 'get_g_mod_at_m_eff_stress'):
-                        if hasattr(sl, 'g_mod_p0') and sl.g_mod_p0 != 0.0:
-                            v_eff = self.sp.get_v_eff_stress_at_depth(y_depth)
-                            k0 = sl.poissons_ratio / (1 - sl.poissons_ratio)
-                            m_eff = v_eff * (1 + 2 * k0) / 3
-                            p = m_eff  # Pa
-                            overrides['d'] = 0.0
-                        else:
-                            p = 101.0e3  # Pa
-                            overrides['d'] = sl.a
-                        g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / 1e3
-                    else:
-                        p = 101.0e3  # Pa
-                        overrides['d'] = 0.0
-                        g_mod_r = sl.g_mod / 1e3
-
-                    b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
-                    overrides['p_ref'] = p / 1e3
-                    overrides['g_mod_ref'] = g_mod_r
-                    overrides['bulk_mod_ref'] = b_mod
-                    if sl.o3_type == 'pimy':
-                        overrides['cohesion'] = sl.cohesion / 1e3
-                        sl_class = o3.nd_material.PressureIndependMultiYield
-                    elif sl.o3_type == 'pdmy':
-                        sl_class = o3.nd_material.PressureDependMultiYield
-                    elif sl.o3_type == 'pdmy02':
-                        sl_class = o3.nd_material.PressureDependMultiYield02
-                else:
-                    g_mod = self.sp.split['shear_vel'][i] ** 2 / self.unit_masses[i]
-                    sl_class = o3.nd_material.ElasticIsotropic
-                    sl.e_mod = 2 * g_mod * (1 - sl.poissons_ratio)
-                    overrides['nu'] = sl.poissons_ratio
-                    app2mod['rho'] = 'unit_moist_mass'
-                args, kwargs = o3.extensions.get_o3_kwargs_from_obj(sl, sl_class, custom=app2mod, overrides=overrides)
-
+                    saturated = False
+                esig_v0 = self.sp.get_v_eff_stress_at_depth(y_depth)
+                sl_class, args, kwargs = o3soil.get_o3_class_and_args_from_soil_obj(sl, saturated,
+                                                                                    overrides={'nu': pois},
+                                                                                    esig_v0=esig_v0)
                 if o3.extensions.has_o3_model_changed(sl_class, prev_sl_class, args, prev_args, kwargs, prev_kwargs):
                     mat = sl_class(self.osi, *args, **kwargs)
                     prev_sl_class = sl_class
