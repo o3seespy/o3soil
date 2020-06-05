@@ -218,7 +218,7 @@ class SRA1D(object):
 
         for i in range(len(self.soil_mats)):
             if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
-                self.soil_mats[i].update_to_nonlinear(self.osi)
+                self.soil_mats[i].update_to_nonlinear()
         for ele in self.eles:
             mat = ele.mat
             if hasattr(mat, 'set_nu'):
@@ -575,7 +575,7 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
 
     for i in range(len(soil_mats)):
         if hasattr(soil_mats[i], 'update_to_nonlinear'):
-            soil_mats[i].update_to_nonlinear(osi)
+            soil_mats[i].update_to_nonlinear()
     for ele in eles:
         mat = ele.mat
         if hasattr(mat, 'set_nu'):

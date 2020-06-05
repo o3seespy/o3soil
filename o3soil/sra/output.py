@@ -14,6 +14,7 @@ class O3SRAOutputs(object):
     out_dict = None
     area = 1.0
     outs = None
+    results_collected = False
 
     def start_recorders(self, osi, outs, sn, eles, rec_dt, sn_xy=False):
         self.rec_dt = rec_dt
@@ -87,7 +88,10 @@ class O3SRAOutputs(object):
         self.srd = srd
 
     def results_to_files(self):
-        od = self.results_to_dict()
+        if not self.results_collected:
+            od = self.results_to_dict()
+        else:
+            od = self.out_dict
         for item in od:
             ffp = self.cache_path + f'{item}.txt'
             if os.path.exists(ffp):
@@ -103,6 +107,7 @@ class O3SRAOutputs(object):
         return od
 
     def results_to_dict(self):
+        self.results_collected = True
         ro = o3.recorder.load_recorder_options()
         import pandas as pd
         df = pd.read_csv(ro)
