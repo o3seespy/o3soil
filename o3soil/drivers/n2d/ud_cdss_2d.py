@@ -86,6 +86,16 @@ def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=
     if nu_dyn is not None:
         mat.set_nu(nu_dyn, ele=ele)
 
+    ro = o3.recorder.load_recorder_options()
+    import pandas as pd
+    df = pd.read_csv(ro)
+    mat_type = ele.mat.type
+    oop = o3.cc.PLANE_STRAIN
+    dfe = df[(df['mat'] == mat_type) & (df['form'] == oop)]
+    df_sxy = dfe[dfe['recorder'] == 'stress']
+    outs = df_sxy['outs'].iloc[0].split('-')
+    sxy_ind = outs.index('sxy')
+
     n_cyc = 0.0
     target_strain = 1.1 * strain_limit
     target_disp = target_strain * h_ele
@@ -100,7 +110,7 @@ def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=
         ts0 = o3.time_series.Path(osi, time=[curr_time, curr_time + steps, 1e10], values=[h_disp, target_disp, target_disp], factor=1)
         pat0 = o3.pattern.Plain(osi, ts0)
         o3.SP(osi, tr_node, dof=o3.cc.X, dof_values=[1.0])
-        curr_stress = o3.get_ele_response(osi, ele, 'stress')[2]
+        curr_stress = o3.get_ele_response(osi, ele, 'stress')[sxy_ind]
         if math.isnan(curr_stress):
             raise ValueError
 
@@ -109,7 +119,7 @@ def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=
             opyfile = None
         while curr_stress < (csr - static_bias) * esig_v0:
             o3.analyze(osi, 1, dt=1)
-            curr_stress = o3.get_ele_response(osi, ele, 'stress')[2]
+            curr_stress = o3.get_ele_response(osi, ele, 'stress')[sxy_ind]
             h_disp = o3.get_node_disp(osi, tr_node, o3.cc.X)
 
             if h_disp >= target_disp:
@@ -163,7 +173,7 @@ def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=
         o3.SP(osi, tr_node, dof=o3.cc.X, dof_values=[1.0])
         while curr_stress < static_bias * esig_v0:
             o3.analyze(osi, 1, dt=1)
-            curr_stress = o3.get_ele_response(osi, ele, 'stress')[2]
+            curr_stress = o3.get_ele_response(osi, ele, 'stress')[sxy_ind]
             h_disp = o3.get_node_disp(osi, tr_node, o3.cc.X)
 
             if h_disp >= target_disp:
