@@ -4,7 +4,7 @@ import math
 
 
 def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001,
-                         handle='silent', verbose=0, opyfile=None, tau_from_nodes=False):
+                         handle='silent', verbose=0, opyfile=None, direct_shear=False, plain_strain=True):
     k0 = 1.0
     pois = k0 / (1 + k0)
     damp = 0.05
@@ -33,7 +33,12 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     # Set out-of-plane DOFs to be slaved
     o3.EqualDOF(osi, nodes[2], nodes[3], [o3.cc.X, o3.cc.Y])
 
-    ele = o3.element.SSPquad(osi, nodes, mat, 'PlaneStrain', 1, 0.0, 0.0)
+    if plain_strain:
+        oop = 'PlaneStrain'
+    else:
+        oop = 'PlaneStress'
+
+    ele = o3.element.SSPquad(osi, nodes, mat, oop, 1, 0.0, 0.0)
 
     o3.constraints.Transformation(osi)
     o3.test_check.NormDispIncr(osi, tol=1.0e-6, max_iter=35, p_flag=0)
@@ -66,8 +71,9 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     o3.system.FullGeneral(osi)
     o3.analysis.Static(osi)
 
-    if hasattr(mat, 'update_material_stage'):
-        mat.update_material_stage(1)
+    if hasattr(mat, 'update_to_nonlinear'):
+        print('set to nonlinear')
+        mat.update_to_nonlinear()
         o3.analyze(osi, 25, dt=1)
     if nu_dyn is not None:
         mat.set_nu(osi, nu_dyn, eles=[ele])
@@ -77,17 +83,35 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     stresses = o3.get_ele_response(osi, ele, 'stress')
     print('init_stress1: ', stresses)
 
+    # Prepare for reading results
+    ro = o3.recorder.load_recorder_options()
+    import pandas as pd
+    df = pd.read_csv(ro)
+
+    mat_type = ele.mat.type
+
     exit_code = None
     stresses = o3.get_ele_response(osi, ele, 'stress')
-    end_strain = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
-    strain = [end_strain]
-    if tau_from_nodes:
+    if direct_shear:
         o3.gen_reactions(osi)
         force0 = o3.get_node_reaction(osi, nodes[2], o3.cc.DOF2D_X)
         force1 = o3.get_node_reaction(osi, nodes[3], o3.cc.DOF2D_X)
         stress = [force1 + force0]
+        strain = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
+        sxy_ind = None
+        gxy_ind = None
     else:
-        stress = [stresses[3]]
+        dfe = df[(df['mat'] == mat_type) & (df['form'] == oop)]
+        df_sxy = dfe[dfe['recorder'] == 'stress']
+        outs = df_sxy['outs'].iloc[0].split('-')
+        sxy_ind = outs.index('sxy')
+
+        df_gxy = dfe[dfe['recorder'] == 'strain']
+        outs = df_gxy['outs'].iloc[0].split('-')
+        gxy_ind = outs.index('gxy')
+        stress = [stresses[sxy_ind]]
+        cur_strains = o3.get_ele_response(osi, ele, 'strain')
+        strain = [cur_strains[gxy_ind]]
     v_eff = [stresses[1]]
     h_eff = [stresses[0]]
     d_incs = np.diff(strains, prepend=0)
@@ -99,6 +123,7 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
         else:
             n = 1
             d_step = d_inc_i
+        print(i, strains[i], n)
         for j in range(n):
             o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
             o3.Load(osi, nodes[2], [1.0, 0.0])
@@ -112,15 +137,16 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
                 opyfile = None
             v_eff.append(stresses[1])
             h_eff.append(stresses[0])
-            if tau_from_nodes:
+            if direct_shear:
                 o3.gen_reactions(osi)
                 force0 = o3.get_node_reaction(osi, nodes[2], o3.cc.DOF2D_X)
                 force1 = o3.get_node_reaction(osi, nodes[3], o3.cc.DOF2D_X)
                 stress.append(force1 + force0)
+                strain.append(o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X))
             else:
-                stress.append(stresses[3])
-            end_strain = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
-            strain.append(end_strain)
+                stress.append(stresses[sxy_ind])
+                cur_strains = o3.get_ele_response(osi, ele, 'strain')
+                strain.append(cur_strains[gxy_ind])
 
     return -np.array(stress), -np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
 
@@ -440,13 +466,14 @@ def example_of_run_ts_custom_strain(show=0):
 
     esig_v0 = 50.0e3
     poissons_ratio = 0.3
-    g_mod = 1.0e6
+    g_mod = 1.0e5
     b_mod = 2 * g_mod * (1 + poissons_ratio) / (3 * (1 - 2 * poissons_ratio))
 
     mat = o3.nd_material.PressureIndependMultiYield(osi, 2, 2058.49, g_mod, b_mod, 68000.0, 0.1, 0.0, 100000.0, 0.0, 25)
+    mat = o3.nd_material.PM4Sand(osi, 0.45, 587, 0.3, 1.6e3, 101.3e3)
     # mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e6, nu=0.3)
-    peak_strains = [0.0001, -0.001, 0.0002]
-    ss, es, vp, hp, error = run_ts_custom_strain(mat, esig_v0=esig_v0, strains=peak_strains, osi=osi, target_d_inc=1.0e-5)
+    peak_strains = [0.001, -0.005, 0.01]
+    ss, es, vp, hp, error = run_ts_custom_strain(mat, esig_v0=esig_v0, strains=peak_strains, osi=osi, target_d_inc=1.0e-4)
     if show:
         import matplotlib.pyplot as plt
         plt.plot(es, ss)
