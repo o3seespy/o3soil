@@ -29,11 +29,14 @@ def run_vload(mat, v_pressure, osi=None, nu_dyn=None):
     o3.algorithm.Newton(osi)
     o3.numberer.RCM(osi)
     o3.system.FullGeneral(osi)
-    o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_Y, 0.005)
+    # o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_Y, 0.005)
+    # o3.integrator.Newmark(osi, gamma=5. / 6, beta=4. / 9)
+    o3.integrator.LoadControl(osi, 1)
+
     # o3.rayleigh.Rayleigh(osi, a0, a1, 0.0, 0.0)
     o3.analysis.Static(osi)
     if hasattr(mat, 'update_to_nonlinear'):
-        mat.update_to_nonlinear(osi)
+        mat.update_to_nonlinear()
     if nu_dyn is not None:
         mat.set_poissons_ratio(osi, nu_dyn, ele=ele)
 
@@ -47,6 +50,7 @@ def run_vload(mat, v_pressure, osi=None, nu_dyn=None):
     o3.Load(osi, nodes[2], [0, -v_pressure * h_ele / 2])
     o3.Load(osi, nodes[3], [0, -v_pressure * h_ele / 2])
     stresses = o3.get_ele_response(osi, ele, 'stress')
+    o3.record(osi)
     for i in range(1000):
         o3.analyze(osi, num_inc=1)
         stresses = o3.get_ele_response(osi, ele, 'stress')
@@ -76,4 +80,4 @@ def run_example(show=0):
 
 
 if __name__ == '__main__':
-    run_example()
+    run_example(show=1)

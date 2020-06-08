@@ -82,7 +82,7 @@ def run(out_folder, dytime=None):
         # TODO: Show loads on playback
         # TODO: add material to playback, and show legend with material type, set material.__str__ as basetype, params[2:]
         sra1d = o3soil.sra.run_sra(sp, asig, xi=xi, cache_path=out_folder, outs=outs,
-                                   analysis_time=dytime, base_imp=-1, playback=True)
+                                   analysis_time=dytime, base_imp=-1, playback=True, opfile='run_pimy.py')
         outputs = sra1d.out_dict
         import pandas as pd
         df = pd.DataFrame.from_dict(outputs['TAU'])

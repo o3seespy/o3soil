@@ -325,6 +325,7 @@ def run_ud_custom_stress(mat, esig_v0, stresses, osi=None, nu_dyn=None, target_d
     v_eff = [curr_stresses[1]]
     h_eff = [curr_stresses[0]]
     prev_stress = stress[0]
+    o3.record(osi)
     for i in range(len(stresses)):
         if stresses[i] >= prev_stress:
             target_disp = 0.1

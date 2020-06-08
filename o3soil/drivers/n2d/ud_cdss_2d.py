@@ -90,7 +90,7 @@ def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=
     target_strain = 1.1 * strain_limit
     target_disp = target_strain * h_ele
     limit_reached = 0
-
+    o3.record(osi)
     while n_cyc < n_lim:
         if verbose:
             print('n_cyc: ', n_cyc)
