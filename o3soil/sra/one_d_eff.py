@@ -178,7 +178,7 @@ class ESSRA1D(object):
             # o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
 
         for i in range(len(self.soil_mats)):
-            if hasattr(self.soil_mats[i], 'update_to_nonlinear'):
+            if hasattr(self.soil_mats[i], 'update_to_nonlinear'):  # TODO: should this pass the ele number to it?
                 self.soil_mats[i].update_to_nonlinear()
 
         for ele in self.eles:

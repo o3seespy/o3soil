@@ -34,7 +34,7 @@ def run_vload(mat, v_pressure, osi=None, nu_dyn=None):
     from o3seespy import extensions
     o3.extensions.to_py_file(osi, 'ele_3d.py')
     if hasattr(mat, 'update_to_nonlinear'):
-        mat.update_to_nonlinear(osi)
+        mat.update_to_nonlinear()
     if nu_dyn is not None:
         mat.set_poissons_ratio(osi, nu_dyn, ele=ele)
 
@@ -73,7 +73,7 @@ def run_example(show=0):
     b_mod = 2 * g_mod * (1 + poissons_ratio) / (3 * (1 - 2 * poissons_ratio))
 
     mat = o3.nd_material.PressureIndependMultiYield(osi, 3, 2058.49, g_mod, b_mod, 68000.0, 0.1, 0.0, 100000.0, 0.0, 25)
-    mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e6, nu=0.3)
+    # mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e6, nu=0.3)
     ss, es = run_vload(mat, v_pressure=esig_v0, osi=osi)
     if show:
         import matplotlib.pyplot as plt
