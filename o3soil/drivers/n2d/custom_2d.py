@@ -4,7 +4,9 @@ import math
 
 
 def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001,
-                         handle='silent', verbose=0, opyfile=None, direct_shear=False, plain_strain=True):
+                         handle='silent', verbose=0, opyfile=None, dss=False, plain_strain=True):
+    if dss:
+        raise ValueError('dss option is not working')
     k0 = 1.0
     pois = k0 / (1 + k0)
     damp = 0.05
@@ -86,7 +88,7 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     # Prepare for reading results
     exit_code = None
     stresses = o3.get_ele_response(osi, ele, 'stress')
-    if direct_shear:
+    if dss:
         o3.gen_reactions(osi)
         force0 = o3.get_node_reaction(osi, nodes[2], o3.cc.DOF2D_X)
         force1 = o3.get_node_reaction(osi, nodes[3], o3.cc.DOF2D_X)
@@ -141,7 +143,7 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
                 opyfile = None
             v_eff.append(stresses[1])
             h_eff.append(stresses[0])
-            if direct_shear:
+            if dss:
                 o3.gen_reactions(osi)
                 force0 = o3.get_node_reaction(osi, nodes[2], o3.cc.DOF2D_X)
                 force1 = o3.get_node_reaction(osi, nodes[3], o3.cc.DOF2D_X)
@@ -155,7 +157,8 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     return -np.array(stress), -np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
 
 
-def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_inc=0.00001, handle='silent', verbose=0, opyfile=None):
+def run_ud_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001, handle='silent',
+                         verbose=0, opyfile=None, dss=False):
 
     damp = 0.05
     omega0 = 0.2
@@ -230,27 +233,36 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
 
     o3.extensions.to_py_file(osi)
     curr_stresses = o3.get_ele_response(osi, ele, 'stress')
-    print('init_stress1: ', curr_stresses)
-    ro = o3.recorder.load_recorder_options()
-    import pandas as pd
-    df = pd.read_csv(ro)
-    mat_type = ele.mat.type
-    oop = o3.cc.PLANE_STRAIN
-    dfe = df[(df['mat'] == mat_type) & (df['form'] == oop)]
-    df_sxy = dfe[dfe['recorder'] == 'stress']
-    outs = df_sxy['outs'].iloc[0].split('-')
-    sxy_ind = outs.index('sxy')
-
-    exit_code = None
     ihd = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)  # initial horizontal displacement
-    strain = [0]
-    stresses = o3.get_ele_response(osi, ele, 'stress')
-    force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
-    force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
-    stress = [-force0 - force1]
-    v_eff = [stresses[1]]
-    h_eff = [stresses[0]]
-    target_disps = np.array(disps) + ihd
+    print('init_stress1: ', curr_stresses)
+    if dss:
+        sxy_ind = None
+        gxy_ind = None
+        force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
+        force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
+        stress = [-force0 - force1]
+    else:
+        ro = o3.recorder.load_recorder_options()
+        import pandas as pd
+        df = pd.read_csv(ro)
+        mat_type = ele.mat.type
+        oop = o3.cc.PLANE_STRAIN
+        dfe = df[(df['mat'] == mat_type) & (df['form'] == oop)]
+        df_sxy = dfe[dfe['recorder'] == 'stress']
+        outs = df_sxy['outs'].iloc[0].split('-')
+        sxy_ind = outs.index('sxy')
+        df_gxy = dfe[dfe['recorder'] == 'strain']
+        outs = df_gxy['outs'].iloc[0].split('-')
+        gxy_ind = outs.index('gxy')
+        stress = [curr_stresses[sxy_ind]]
+        # cur_strains = o3.get_ele_response(osi, ele, 'strain')
+        # strain = [cur_strains[gxy_ind]]
+    strain = [0.0]
+    exit_code = None
+
+    v_eff = [curr_stresses[1]]
+    h_eff = [curr_stresses[0]]
+    target_disps = np.array(strains) + ihd
 
     for i in range(len(target_disps)):
         h_disp = o3.get_node_disp(osi, nodes[2], o3.cc.X)
@@ -270,13 +282,16 @@ def run_ud_custom_strain(mat, esig_v0, disps, osi=None, nu_dyn=None, target_d_in
                 opyfile = None
             v_eff.append(curr_stresses[1])
             h_eff.append(curr_stresses[0])
-            stress.append(curr_stresses[sxy_ind])
-            # o3.gen_reactions(osi)
-            # force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
-            # force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
-            # stress.append(-force0 - force1)
-            end_strain = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
-            strain.append(end_strain - ihd)
+            if dss:
+                o3.gen_reactions(osi)
+                force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
+                force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
+                stress.append(-force0 - force1)
+                strain.append(o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X) - ihd)
+            else:
+                stress.append(curr_stresses[sxy_ind])
+                cur_strains = o3.get_ele_response(osi, ele, 'strain')
+                strain.append(cur_strains[gxy_ind])
 
         o3.remove_load_pattern(osi, pat0)
         o3.remove(osi, ts0)
@@ -462,6 +477,16 @@ def example_of_run_ud_custom_strain(show=0):
         sps[2].plot(strain, label='o3seespy')
         for ps in peak_strains:
             sps[2].axhline(ps, c='k')
+        w_dss = 1
+        if w_dss:
+            pm4sand = o3.nd_material.PM4Sand(None, sl.relative_density, sl.g0_mod, sl.h_po, sl.unit_sat_mass,
+                                             p_atm=101.3, nu=nu_init)
+    
+            stress, strain, vstress, hstress, ecode = run_ud_custom_strain(pm4sand, esig_v0, peak_strains, dss=True)
+            sps[0].plot(stress, label='shear')
+            sps[0].plot(vstress[0] - vstress, label='PPT')
+            sps[1].plot(strain, stress, label='o3seespy')
+            sps[2].plot(strain, label='o3seespy')
 
         sps[0].set_xlabel('Time [s]')
         sps[0].set_ylabel('Stress [kPa]')
@@ -491,7 +516,7 @@ def example_of_run_ts_custom_strain(show=0):
         plt.show()
 
 
-def example_of_run_ts_custom_strain_w_direct_shear(show=0):
+def example_of_run_ts_custom_strain_w_dss(show=0):
     osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
 
     esig_v0 = 50.0e3
@@ -503,7 +528,7 @@ def example_of_run_ts_custom_strain_w_direct_shear(show=0):
     # mat = o3.nd_material.PM4Sand(osi, 0.45, 587, 0.3, 1.6e3, 101.3e3)
     mat = o3.nd_material.ElasticIsotropic(osi, e_mod=1.0e6, nu=0.3)
     peak_strains = [0.001, -0.005, 0.01]
-    ss, es, vp, hp, error = run_ts_custom_strain(mat, esig_v0=esig_v0, strains=peak_strains, osi=osi, target_d_inc=5.0e-4, direct_shear=True)
+    ss, es, vp, hp, error = run_ts_custom_strain(mat, esig_v0=esig_v0, strains=peak_strains, osi=osi, target_d_inc=5.0e-4, dss=True)
     if show:
         import matplotlib.pyplot as plt
         plt.plot(es, ss)
@@ -517,7 +542,32 @@ def example_of_run_ts_custom_strain_w_direct_shear(show=0):
         plt.show()
 
 
+def example_compare_ts_loader_and_ud_loader(show=0):
+
+    esig_v0 = 50.0e3
+    poissons_ratio = 0.3
+    g_mod = 1.0e6
+    b_mod = 2 * g_mod * (1 + poissons_ratio) / (3 * (1 - 2 * poissons_ratio))
+
+    mat = o3.nd_material.PressureIndependMultiYield(None, 2, 1600, g_mod, b_mod, 1800.0, 0.1, 0.0, 101000.0, 0.0, 25)
+    peak_strains = [0.001, -0.005, 0.01, -0.01, 0.01, -0.01]
+    ts_ss, ts_es, ts_vp, ts_hp, ts_error = run_ts_custom_strain(mat, esig_v0=esig_v0, strains=peak_strains,
+                                                 target_d_inc=5.0e-4)
+    mat = o3.nd_material.PressureIndependMultiYield(None, 2, 1600, g_mod, b_mod, 1800.0, 0.1, 0.0, 101000.0, 0.0, 25)
+    ud_ss, ud_es, ud_vp, ud_hp, ud_error = run_ud_custom_strain(mat, esig_v0=esig_v0, strains=peak_strains,
+                                                 target_d_inc=5.0e-4)
+    if show:
+        import matplotlib.pyplot as plt
+        plt.plot(ts_es, ts_ss, label='TS')
+        plt.plot(ud_es, ud_ss, label='UD')
+        plt.xlabel('Shear strain')
+        plt.xlabel('Shear stress [Pa]')
+        plt.legend()
+        plt.show()
+
+
 if __name__ == '__main__':
-    example_of_run_ud_custom_strain(show=1)
+    # example_of_run_ud_custom_strain(show=1)
     # example_of_run_ts_custom_strain(show=1)
-    # example_of_run_ts_custom_strain_w_direct_shear(show=1)
+    # example_of_run_ts_custom_strain_w_dss(show=1)
+    example_compare_ts_loader_and_ud_loader(show=1)
