@@ -441,18 +441,14 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         # Establish left and right nodes
         sn.append([o3.node.Node(osi, ele_width * j, -node_depths[i]) for j in range(nx + 1)])
         # set x and y dofs equal for left and right nodes
-        if i != n_node_rows -1:
-            o3.EqualDOF(osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])
+        o3.EqualDOF(osi, sn[i][0], sn[i][-1], [o3.cc.X, o3.cc.Y])  # if i != n_node_rows - 1:
     sn = np.array(sn)
 
-    if base_imp < 0:
-        # Fix base nodes
-        for j in range(nx + 1):
-            o3.Fix2DOF(osi, sn[-1][j], o3.cc.FIXED, o3.cc.FIXED)
+    if base_imp < 0:  # Fixed base
+        o3.Fix2DOFMulti(osi, sn[-1], o3.cc.FIXED, o3.cc.FIXED)  # Fix base nodes
     else:
         # Fix base nodes
-        for j in range(nx + 1):
-            o3.Fix2DOF(osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED)
+        o3.Fix2DOFMulti(osi, sn[-1], o3.cc.FREE, o3.cc.FIXED)
 
         # Define dashpot nodes
         dashpot_node_l = o3.node.Node(osi, 0, -node_depths[-1])

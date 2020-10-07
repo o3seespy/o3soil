@@ -3,7 +3,7 @@ import o3seespy as o3
 import numpy as np
 
 
-def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=True, soil_nl=True):
+def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, ip_axis, axis=None, dettach=True, soil_nl=True):
     """
     Set a Beam on nonlinear Winker Foundation between two nodes
 
@@ -16,24 +16,28 @@ def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=Tr
         The soil node
     bd_node: o3.Node
         The base of the building node
+    ip_axis: str
+        The axis that is in the plane of deformation
     axis: str
-        The axis which the foundation would rotate around
+        The axis which the foundation would rotate around (deprecated in favour of ip_axis)
     dettach
-    soil_nl: str
-        'lin'
-        'epp'
-        'pro'
+    soil_nl: bool
 
     Returns
     -------
 
     """
+    if axis is not None:
+        if axis == 'length':
+            ip_axis = 'width'
+        else:
+            ip_axis = 'length'
     # TODO: account for foundation height
     end_zone_ratio = 0.3  # TODO: currently based on 0.3, but Harden et al. (2005) showed this to be a ratio of B/L
-    k_rot = gf.stiffness.calc_rotational_via_gazetas_1991(sl, fd, axis=axis)
+    k_rot = gf.stiffness.calc_rotational_via_gazetas_1991(sl, fd, ip_axis=ip_axis)
     k_vert = gf.stiffness.calc_vert_via_gazetas_1991(sl, fd)
-    if axis == 'length':  # rotation around the length axis
-        k_vert_i = k_vert / fd.width / fd.length
+    if ip_axis == 'width':  # rotation around the length axis
+        k_vert_i = k_vert / fd.width / fd.length  # TODO: should the be only divide by width?
     else:
         k_vert_i = k_vert / fd.length / fd.length
     if fd.i_ww >= fd.i_ll:
@@ -44,7 +48,7 @@ def set_bnwf2d_via_harden_2009(osi, sl, fd, soil_node, bd_node, axis, dettach=Tr
         len_dominant = False
         l = fd.width * 0.5
         b = fd.length * 0.5
-    if (axis == 'length' and len_dominant) or (axis == 'width' and not len_dominant):
+    if (ip_axis == 'width' and len_dominant) or (ip_axis == 'length' and not len_dominant):
         # rotation around x-axis
         r_k = (3 * k_rot / (4 * k_vert_i * b ** 3 * l)) - (1 - end_zone_ratio) ** 3 / (1 - (1 - end_zone_ratio) ** 3)
     else:

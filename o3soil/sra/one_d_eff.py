@@ -132,7 +132,7 @@ class ESSRA1D(object):
                 k_water = self.sp.water_bulk_mod
             else:
                 k_water = 2.2e6
-            for xx in range(nx):
+            for xx in range(nx):  # TODO: account for gwl
                 nodes = [sn[i + 1][xx], sn[i + 1][xx + 1], sn[i][xx + 1], sn[i][xx]]  # anti-clockwise
                 a_sspquad_up = 6.0e-5
                 self.eles.append(o3.element.SSPquadUP(self.osi, nodes, mat, ele_thick, k_water, f_den=1.0, k1=sl.permeability,

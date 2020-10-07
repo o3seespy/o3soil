@@ -1,4 +1,4 @@
-openseespy
+o3seespy
 numpy
 sfsimodels
 

@@ -41,18 +41,18 @@ def get_o3_class_and_args_from_soil_obj(sl, saturated=False, esig_v0=None, f_ord
                 p = m_eff  # Pa
                 overrides['d'] = 0.0
             else:
-                p = 101.0e3 / f_order  # Pa
+                p = 101.0e3  # Pa
                 overrides['d'] = sl.a
-            g_mod_r = sl.get_g_mod_at_m_eff_stress(p) / f_order
+            g_mod_r = sl.get_g_mod_at_m_eff_stress(p)
         else:
-            p = 101.0e3 / f_order  # Pa
+            p = 101.0e3  # Pa
             overrides['d'] = 0.0
-            g_mod_r = sl.g_mod / f_order
+            g_mod_r = sl.g_mod
 
         b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
         overrides['p_ref'] = p / f_order
-        overrides['g_mod_ref'] = g_mod_r
-        overrides['bulk_mod_ref'] = b_mod
+        overrides['g_mod_ref'] = g_mod_r / f_order
+        overrides['bulk_mod_ref'] = b_mod / f_order
         if sl.o3_type == 'pimy':
             overrides['cohesion'] = sl.cohesion / f_order
             sl_class = o3.nd_material.PressureIndependMultiYield
