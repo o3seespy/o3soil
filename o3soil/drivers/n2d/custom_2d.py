@@ -4,7 +4,7 @@ import math
 
 
 def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001,
-                         handle='silent', verbose=0, opyfile=None, dss=False, plain_strain=True):
+                         handle='silent', verbose=0, opyfile=None, dss=False, plain_strain=True, min_n=10):
     if dss:
         raise ValueError('dss option is not working')
     k0 = 1.0
@@ -123,13 +123,8 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     d_incs = np.diff(strains, prepend=0)
     for i in range(len(strains)):
         d_inc_i = d_incs[i]
-        if target_d_inc < abs(d_inc_i):
-            n = int(abs(d_inc_i / target_d_inc))
-            d_step = d_inc_i / n
-        else:
-            n = 1
-            d_step = d_inc_i
-        print(i, strains[i], n)
+        n = int(max(abs(d_inc_i / target_d_inc), min_n))
+        d_step = d_inc_i / n
         for j in range(n):
             o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
             o3.Load(osi, nodes[2], [1.0, 0.0])

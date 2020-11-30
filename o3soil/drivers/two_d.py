@@ -96,7 +96,7 @@ def run_2d_stress_driver(osi, base_mat, esig_v0, forces, d_step=0.001, max_steps
 
 
 def run_2d_strain_driver_iso(osi, base_mat, esig_v0, disps, target_d_inc=0.00001, max_steps=10000, handle='silent', da_strain_max=0.05, max_cycles=200, srate=0.0001, esig_v_min=1.0, k0_init=1, verbose=0,
-                   cyc_lim_fail=True):
+                   cyc_lim_fail=True, min_n=10):
     if not np.isclose(k0_init, 1., rtol=0.05):
         raise ValueError(f'Only supports k0=1, current k0={k0_init:.3f}')
     max_steps_per_half_cycle = 50000
@@ -150,12 +150,8 @@ def run_2d_strain_driver_iso(osi, base_mat, esig_v0, disps, target_d_inc=0.00001
     # orys = np.where(diffs >= 0, 1, -1)
     for i in range(len(disps)):
         d_inc_i = d_incs[i]
-        if target_d_inc < abs(d_inc_i):
-            n = int(abs(d_inc_i / target_d_inc))
-            d_step = d_inc_i / n
-        else:
-            n = 1
-            d_step = d_inc_i
+        n = int(max(abs(d_inc_i / target_d_inc), min_n))
+        d_step = d_inc_i / n
         for j in range(n):
             o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
             o3.Load(osi, nodes[2], [1.0, 0.0])
@@ -176,7 +172,7 @@ def run_2d_strain_driver_iso(osi, base_mat, esig_v0, disps, target_d_inc=0.00001
     return -np.array(stress), np.array(strain), np.array(v_eff), np.array(h_eff), exit_code
 
 
-def run_2d_strain_driver(osi, mat, esig_v0, disps, target_d_inc=0.00001, handle='silent', verbose=0):
+def run_2d_strain_driver(osi, mat, esig_v0, disps, target_d_inc=0.00001, handle='silent', verbose=0, min_n=10):
     if osi is None:
         osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
         base_mat.build(osi)
@@ -265,12 +261,8 @@ def run_2d_strain_driver(osi, mat, esig_v0, disps, target_d_inc=0.00001, handle=
     d_incs = np.diff(disps, prepend=0)
     for i in range(len(disps)):
         d_inc_i = d_incs[i]
-        if target_d_inc < abs(d_inc_i):
-            n = int(abs(d_inc_i / target_d_inc))
-            d_step = d_inc_i / n
-        else:
-            n = 1
-            d_step = d_inc_i
+        n = int(max(abs(d_inc_i / target_d_inc), min_n))
+        d_step = d_inc_i / n
         for j in range(n):
             o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
             o3.Load(osi, nodes[2], [1.0, 0.0])
