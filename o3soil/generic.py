@@ -2,6 +2,7 @@ import o3seespy as o3
 
 
 def get_o3_class_and_args_from_soil_obj(sl, saturated=False, esig_v0=None, f_order=1e3, overrides=None):
+    import numpy as np
     if overrides is None:
         overrides = {}
 
@@ -54,7 +55,11 @@ def get_o3_class_and_args_from_soil_obj(sl, saturated=False, esig_v0=None, f_ord
         overrides['g_mod_ref'] = g_mod_r / f_order
         overrides['bulk_mod_ref'] = b_mod / f_order
         if sl.o3_type == 'pimy':
-            overrides['cohesion'] = sl.cohesion / f_order
+            if sl.phi != 0:
+                raise ValueError('need to deal with strength correction')
+            tau_f = 2 * np.sqrt(2.) / 3 * sl.cohesion
+            sf = sl.peak_strain * sl.g_mod / (sl.g_mod * sl.peak_strain - tau_f) * np.sqrt(3. / 2) * tau_f / sl.cohesion
+            overrides['cohesion'] = sl.cohesion / f_order / sf
             sl_class = o3.nd_material.PressureIndependMultiYield
         elif sl.o3_type == 'pdmy':
             sl_class = o3.nd_material.PressureDependMultiYield
