@@ -12,7 +12,7 @@ def run_ud_cdss(mat, esig_v0, csr, osi=None, static_bias=0.0, n_lim=100, nu_dyn=
     a0 = a1 * omega0 * omega1
 
     if osi is None:
-        osi = o3.OpenSeesInstance(ndm=2, ndf=2)
+        osi = o3.OpenSeesInstance(ndm=2, ndf=3)
         mat.build(osi)
 
     # Establish nodes
@@ -244,4 +244,4 @@ def run_example(show=0):
 
 
 if __name__ == '__main__':
-    run_example()
+    run_example(show=1)

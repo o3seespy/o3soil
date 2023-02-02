@@ -20,8 +20,12 @@ def get_o3_class_and_args_from_soil_obj(sl, saturated=False, esig_v0=None, f_ord
         overrides['rho'] = umass
     if 'unit_moist_mass' not in overrides:
         overrides['unit_moist_mass'] = umass
-    if 'nd' not in overrides:
-        overrides['nd'] = 2
+    # if 'nd' not in overrides:
+    #     overrides['nd'] = 2
+    if 'e_init' not in overrides:
+        overrides['e_init'] = sl.e_curr
+    if 'nu' not in overrides:
+        overrides['nu'] = sl.poissons_ratio
 
     app2mod = {}
     # Define material
@@ -29,6 +33,10 @@ def get_o3_class_and_args_from_soil_obj(sl, saturated=False, esig_v0=None, f_ord
         sl.o3_type = sl.type  # for backward compatibility
     if sl.o3_type == 'pm4sand':
         sl_class = o3.nd_material.PM4Sand
+        app2mod = sl.app2mod
+    elif sl.o3_type == 'manzaridafalias_model':
+        sl_class = o3.nd_material.ManzariDafalias
+        overrides['g0'] = sl.g0_mod
         app2mod = sl.app2mod
     elif sl.o3_type == 'sdmodel':
         sl_class = o3.nd_material.StressDensity
@@ -49,6 +57,8 @@ def get_o3_class_and_args_from_soil_obj(sl, saturated=False, esig_v0=None, f_ord
             p = 101.0e3  # Pa
             overrides['d'] = 0.0
             g_mod_r = sl.g_mod
+        if 'nd' not in overrides:
+            overrides['nd'] = 2
 
         b_mod = 2 * g_mod_r * (1 + sl.poissons_ratio) / (3 * (1 - 2 * sl.poissons_ratio))
         overrides['p_ref'] = p / f_order

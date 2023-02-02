@@ -66,7 +66,9 @@ def run():
     pysra_sig = eqsig.AccSignal(od['ACCX'][0], in_sig.dt)
 
     # run a nonlinear analysis with o3seespy - using the o3soil package
-    outputs = o3soil.sra.site_response(soil_profile, in_sig, xi=0.02, freqs=(0.5, 5))
+    # outputs = o3soil.sra.site_response(soil_profile, in_sig, xi=0.02, freqs=(0.5, 5))
+    sobj = o3soil.sra.run_sra(soil_profile, in_sig, xi=0.02, ray_freqs=(0.5, 5), outs={'ACCX': 'all'})
+    outputs = sobj.out_dict
     # save surface acceleration as an eqsig.AccSignal object
     resp_dt = outputs['time'][2] - outputs['time'][1]
     surf_sig = eqsig.AccSignal(outputs['ACCX'][0], resp_dt)

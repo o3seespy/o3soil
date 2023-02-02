@@ -64,6 +64,9 @@ class ESSRA1D(object):
             # Establish left and right nodes
             sn.append([o3.node.Node(self.osi, self.ele_width * j, self.node_depths[i]) for j in range(nx + 1)])
             # set x and y dofs equal for left and right nodes
+            if -self.node_depths[i] <= self.sp.gwl:
+                for j in range(nx + 1):
+                    o3.Fix3DOF(self.osi, sn[i][j], o3.cc.FREE, o3.cc.FREE, o3.cc.FIXED)
             if i != self.n_node_rows - 1:
                 o3.EqualDOF(self.osi, sn[i][0], sn[i][-1], [o3.cc.DOF2D_X, o3.cc.DOF2D_Y, o3.cc.DOF2D_PP])
         sn = np.array(sn)
@@ -75,7 +78,7 @@ class ESSRA1D(object):
         else:
             # Fix base nodes
             for j in range(nx + 1):
-                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED, o3.cc.FIXED)  # Fixed pore pressure at base
+                o3.Fix3DOF(self.osi, sn[-1][j], o3.cc.FREE, o3.cc.FIXED, o3.cc.FREE)  # Fixed pore pressure at base
 
             # Define dashpot nodes
             self.osi.reset_model_params(2, ndf=2)
@@ -156,23 +159,26 @@ class ESSRA1D(object):
         for ele in self.eles:
             self.o3res.mat2ele_tags.append([ele.mat.tag, ele.tag])
 
-    def execute_static(self, ray_freqs=(0.5, 10), xi=0.03):
+    def execute_static(self, ray_freqs=(0.5, 10), xi=0.1):
         # Static analysis
         # for i in range(len(self.soil_mats)):  # TODO: should be a method on object 'update_to_linear'
         #     o3.update_material_stage(self.osi, self.soil_mats[i], 0)
+        for i in range(len(self.soil_mats)):
+            if hasattr(self.soil_mats[i], 'update_to_linear'):  # TODO: should this pass the ele number to it?
+                self.soil_mats[i].update_to_linear()
         o3.constraints.Transformation(self.osi)
         o3.test.NormDispIncr(self.osi, tol=1.0e-5, max_iter=30, p_flag=0)
         o3.algorithm.KrylovNewton(self.osi)
         o3.numberer.RCM(self.osi)
-        o3.system.ProfileSPD(self.osi)
-        o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
+        o3.system.FullGeneral(self.osi)
+        o3.integrator.Newmark(self.osi, 5. / 6, 4. / 9)
         o3.analysis.Transient(self.osi)
         omega_1 = 2 * np.pi * ray_freqs[0]
         omega_2 = 2 * np.pi * ray_freqs[1]
         a0 = 2 * xi * omega_1 * omega_2 / (omega_1 + omega_2)
         a1 = 2 * xi / (omega_1 + omega_2)
         # o3.rayleigh.Rayleigh(self.osi, a0, a1, 0, 0)
-        o3.analyze(self.osi, 1000, 5.)
+        o3.analyze(self.osi, 1000, 0.01)
         # if self.opfile:
         #     o3.extensions.to_py_file(self.osi, self.opfile, compress=True)
             # o3.extensions.to_tcl_file(self.osi, self.opfile.replace('.py', '.tcl'))
@@ -188,13 +194,14 @@ class ESSRA1D(object):
             if hasattr(mat, 'set_first_call'):
                 mat.set_first_call(value=0, ele=ele)
                 # TODO: set_dynamic permeability
-        o3.analyze(self.osi, 40, 500.)
+        o3.analyze(self.osi, 400, .01)
 
         # reset time and analysis
         o3.wipe_analysis(self.osi)
         self.o3res.coords = o3.get_all_node_coords(self.osi)
         # if self.opfile:
         #     o3.extensions.to_py_file(self.osi, self.opfile)
+        print('static complete')
 
     def get_nearest_node_layer_at_depth(self, depth):
         # Convert to positive since node depths go downwards
@@ -211,7 +218,7 @@ class ESSRA1D(object):
         o3.constraints.Transformation(self.osi)
         o3.test.NormDispIncr(self.osi, tol=1.0e-4, max_iter=30, p_flag=0)
         # o3.test_check.EnergyIncr(self.osi, tol=1.0e-6, max_iter=30)
-        o3.algorithm.Newton(self.osi)
+        o3.algorithm.KrylovNewton(self.osi)
         o3.system.SparseGeneral(self.osi)
         o3.numberer.RCM(self.osi)
         o3.integrator.Newmark(self.osi, gamma=0.5, beta=0.25)
@@ -247,6 +254,8 @@ class ESSRA1D(object):
 
     def execute_dynamic(self, asig, analysis_dt=0.001, ray_freqs=(0.5, 10), xi=0.03, analysis_time=None,
                         outs=None, rec_dt=None, playback_dt=None, playback=True):
+        if analysis_time is None:
+            analysis_time = asig.time[-1]
         self.rec_dt = rec_dt
         self.playback_dt = playback_dt
         if rec_dt is None:

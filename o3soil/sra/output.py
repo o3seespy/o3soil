@@ -11,6 +11,7 @@ ecp2o3_type_dict = {'TAU': ['stress', 'sxy'],
 
 class O3SRAOutputs(object):
     cache_path = ''
+    prefix = ''
     out_dict = None
     area = 1.0
     outs = None
@@ -32,7 +33,7 @@ class O3SRAOutputs(object):
         rd = {}
         srd = {}
         for otype in outs:
-            if otype in ['ACCX', 'DISPX', 'PP']:
+            if otype in ['ACCX', 'DISPX', 'PP', 'stress', 'strain']:
                 if isinstance(outs[otype], str) and outs[otype] == 'all':
 
                     if otype == 'ACCX':
@@ -60,14 +61,6 @@ class O3SRAOutputs(object):
                         srd[rname] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=[rname], dt=rec_dt)
                 else:
                     raise ValueError('Currently not supported')
-                    # rd['STRESS'] = []
-                    # for i in range(len(outs['TAU'])):
-                    #     ind = np.argmin(abs(ele_depths - outs['TAU'][i]))
-                    #     rd['STRESS'].append(o3.recorder.ElementToArrayCache(osi, ele=eles[ind], arg_vals=['stress'], dt=rec_dt))
-            # if otype == 'ESIGY':
-            #     if isinstance(outs['TAU'], str) and outs['TAU'] == 'all':
-            #         if 'stress' not in srd:
-            #             srd['stress'] = o3.recorder.ElementsToArrayCache(osi, eles=eles, arg_vals=['stress'], dt=rec_dt)
             if otype == 'TAUX':
                 if isinstance(outs['TAUX'], str) and outs['TAUX'] == 'all':
                     rd['TAUX'] = o3.recorder.NodesToArrayCache(osi, nodes=sn.flatten(f_order), dofs=[o3.cc.X],
@@ -93,7 +86,7 @@ class O3SRAOutputs(object):
         else:
             od = self.out_dict
         for item in od:
-            ffp = self.cache_path + f'{item}.txt'
+            ffp = self.cache_path + f'{self.prefix}{item}.txt'
             if os.path.exists(ffp):
                 os.remove(ffp)
             np.savetxt(ffp, od[item])

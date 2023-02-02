@@ -405,8 +405,8 @@ def site_response(sp, asig, freqs=(0.5, 10), xi=0.03, analysis_dt=0.001, dy=0.5,
         outs = {'ACCX': 'all'}  # Export the horizontal acceleration at the surface
     if rec_dt is None:
         rec_dt = analysis_dt
-    else:
-        raise ValueError('This is causing an error')
+    # else:
+    #     raise ValueError('This is causing an error')
     state = 0
     if opfile:
         state = 3

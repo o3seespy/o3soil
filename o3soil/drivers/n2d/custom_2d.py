@@ -3,17 +3,19 @@ import numpy as np
 import math
 
 
-def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001,
+def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001, k0=None,
                          handle='silent', verbose=0, opyfile=None, dss=False, plain_strain=True, min_n=10):
     if dss:
         raise ValueError('dss option is not working')
-    k0 = 1.0
-    pois = k0 / (1 + k0)
     damp = 0.05
     omega0 = 0.2
     omega1 = 20.0
-    a1 = 2. * damp / (omega0 + omega1)
-    a0 = a1 * omega0 * omega1
+    a1 = 2. * damp / (omega0 + omega1)  # beta
+    a0 = a1 * omega0 * omega1  # alpha
+    # or
+    # alpha = xi_min * omega_min
+    # beta = xi_min / omega_min
+
     if osi is None:
         osi = o3.OpenSeesInstance(ndm=2, ndf=2)
         mat.build(osi)
@@ -28,12 +30,14 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     ]
 
     # Fix bottom node
-    o3.Fix2DOF(osi, nodes[0], o3.cc.FIXED, o3.cc.FIXED)
-    o3.Fix2DOF(osi, nodes[1], o3.cc.FIXED, o3.cc.FIXED)
-    o3.Fix2DOF(osi, nodes[2], o3.cc.FREE, o3.cc.FREE)
-    o3.Fix2DOF(osi, nodes[3], o3.cc.FREE, o3.cc.FREE)
-    # Set out-of-plane DOFs to be slaved
-    o3.EqualDOF(osi, nodes[2], nodes[3], [o3.cc.X, o3.cc.Y])
+    if k0 is None:
+        o3.Fix2DOF(osi, nodes[0], o3.cc.FIXED, o3.cc.FIXED)
+        o3.Fix2DOF(osi, nodes[1], o3.cc.FIXED, o3.cc.FIXED)
+        # Set out-of-plane DOFs to be slaved
+        o3.EqualDOF(osi, nodes[2], nodes[3], [o3.cc.X, o3.cc.Y])
+    else:  # control k0 with node forces
+        o3.Fix2DOF(osi, nodes[0], o3.cc.FIXED, o3.cc.FIXED)
+        o3.Fix2DOF(osi, nodes[1], o3.cc.FIXED, o3.cc.FREE)
 
     if plain_strain:
         oop = 'PlaneStrain'
@@ -55,12 +59,17 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     # Add static vertical pressure and stress bias
     time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
     o3.pattern.Plain(osi, time_series)
-    ts0 = o3.time_series.Linear(osi, factor=1)
-    o3.pattern.Plain(osi, ts0)
-    o3.Load(osi, nodes[2], [0, -esig_v0 / 2])
-    o3.Load(osi, nodes[3], [0, -esig_v0 / 2])
 
-    o3.analyze(osi, num_inc=100)
+    if k0:
+        o3.Load(osi, nodes[2], [-esig_v0 / 2 * k0, -esig_v0 / 2])
+        o3.Load(osi, nodes[3], [esig_v0 / 2 * k0, -esig_v0 / 2])
+        o3.Load(osi, nodes[1], [-esig_v0 / 2 * k0, 0])
+        # node 0 is fixed
+    else:
+        o3.Load(osi, nodes[2], [0, -esig_v0 / 2])
+        o3.Load(osi, nodes[3], [0, -esig_v0 / 2])
+
+    o3.analyze(osi, num_inc=200)
     stresses = o3.get_ele_response(osi, ele, 'stress')
     print('init_stress0: ', stresses)
     o3.load_constant(osi, 100)
@@ -78,7 +87,7 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
         mat.update_to_nonlinear()
         o3.analyze(osi, 25, dt=1)
     if nu_dyn is not None:
-        mat.set_nu(osi, nu_dyn, eles=[ele])
+        mat.set_nu(nu_dyn, eles=[ele])
         o3.analyze(osi, 25, dt=1)
 
     # o3.extensions.to_py_file(osi)
@@ -125,10 +134,10 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
         d_inc_i = d_incs[i]
         n = int(max(abs(d_inc_i / target_d_inc), min_n))
         d_step = d_inc_i / n
+        o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
+        o3.Load(osi, nodes[2], [1.0, 0.0])
+        o3.Load(osi, nodes[3], [1.0, 0.0])
         for j in range(n):
-            o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
-            o3.Load(osi, nodes[2], [1.0, 0.0])
-            o3.Load(osi, nodes[3], [1.0, 0.0])
             o3.analyze(osi, 1)
 
             stresses = o3.get_ele_response(osi, ele, 'stress')
@@ -153,9 +162,10 @@ def run_ts_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
 
 
 def run_ud_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_inc=0.00001, handle='silent',
-                         verbose=0, opyfile=None, dss=False):
+                         verbose=0, opyfile=None, dss=False, damp_freqs=(0.5, 10)):
+    """must be in kPa"""
 
-    damp = 0.05
+    damp = 0.02
     omega0 = 0.2
     omega1 = 20.0
     a1 = 2. * damp / (omega0 + omega1)
@@ -186,6 +196,9 @@ def run_ud_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     ele = o3.element.SSPquadUP(osi, nodes, mat, 1.0, water_bulk_mod, 1.,
                                1.0e-4, 1.0e-4, 0.6, alpha=1.0e-5, b1=0.0, b2=0.0)
 
+    if hasattr(mat, 'update_to_linear'):
+        mat.update_to_linear()
+
     o3.constraints.Transformation(osi)
     o3.test_check.NormDispIncr(osi, tol=1.0e-6, max_iter=35, p_flag=0)
     o3.algorithm.Newton(osi)
@@ -196,16 +209,16 @@ def run_ud_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     o3.analysis.Transient(osi)
 
     # Add static vertical pressure and stress bias
-    time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
+    time_series = o3.time_series.Path(osi, time=[0, 200, 1e10], values=[0, 1, 1])
     o3.pattern.Plain(osi, time_series)
     o3.Load(osi, nodes[2], [0, -esig_v0 / 2, 0])
     o3.Load(osi, nodes[3], [0, -esig_v0 / 2, 0])
 
-    o3.analyze(osi, num_inc=110, dt=1)
+    o3.analyze(osi, num_inc=2100, dt=0.1)
     init_stresses = o3.get_ele_response(osi, ele, 'stress')
     print('init_stress0: ', init_stresses)
 
-    ts2 = o3.time_series.Path(osi, time=[110, 80000, 1e10], values=[1., 1., 1.], factor=1)
+    ts2 = o3.time_series.Path(osi, time=[210, 80000, 1e10], values=[1., 1., 1.], factor=1)
     o3.pattern.Plain(osi, ts2, fact=1.)
     y_vert = o3.get_node_disp(osi, nodes[3], o3.cc.Y)
     o3.SP(osi, nodes[2], dof=o3.cc.Y, dof_values=[y_vert])
@@ -214,21 +227,26 @@ def run_ud_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
     # Close the drainage valves
     for node in nodes:
         o3.remove_sp(osi, node, dof=3)
-    o3.analyze(osi, 25, dt=1)
+    o3.analyze(osi, 250, dt=0.1)
     print('here3: ', o3.get_ele_response(osi, ele, 'stress'), esig_v0)
 
     if hasattr(mat, 'update_to_nonlinear'):
         mat.update_to_nonlinear()
-        o3.analyze(osi, 25, dt=1)
+        # o3.analyze(osi, 250, dt=0.001)
+    curr_stresses = o3.get_ele_response(osi, ele, 'stress')
+    print('init_stress1: ', curr_stresses)
     if hasattr(mat, 'set_first_call'):
+        o3.update_material_stage(osi, ele.mat, stage=1)
         mat.set_first_call(value=0, ele=ele)
+        o3.analyze(osi, 250, dt=0.001)
+    curr_stresses = o3.get_ele_response(osi, ele, 'stress')
+    print('init_stress1: ', curr_stresses)
     if nu_dyn is not None:
         mat.set_nu(nu_dyn, ele=ele)
-        o3.analyze(osi, 25, dt=1)
+        o3.analyze(osi, 25, dt=0.1)
 
     o3.extensions.to_py_file(osi)
     curr_stresses = o3.get_ele_response(osi, ele, 'stress')
-    ihd = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)  # initial horizontal displacement
     print('init_stress1: ', curr_stresses)
     if dss:
         sxy_ind = None
@@ -257,6 +275,7 @@ def run_ud_custom_strain(mat, esig_v0, strains, osi=None, nu_dyn=None, target_d_
 
     v_eff = [curr_stresses[1]]
     h_eff = [curr_stresses[0]]
+    ihd = o3.get_node_disp(osi, nodes[2], dof=o3.cc.X)  # initial horizontal displacement
     target_disps = np.array(strains) + ihd
 
     for i in range(len(target_disps)):
@@ -339,8 +358,6 @@ def run_ud_custom_stress(mat, esig_v0, stresses, osi=None, nu_dyn=None, target_d
     o3.analysis.Transient(osi)
 
     # Add static vertical pressure and stress bias
-    # time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
-    # o3.pattern.Plain(osi, time_series)
     time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
     o3.pattern.Plain(osi, time_series)
     o3.Load(osi, nodes[2], [0, -esig_v0 / 2, 0])
@@ -561,8 +578,146 @@ def example_compare_ts_loader_and_ud_loader(show=0):
         plt.show()
 
 
+def run_2d_strain_driver_vcon(osi, mat, esig_v0, disps, target_d_inc=0.00001, handle='silent', verbose=0, min_n=10):
+    if osi is None:
+        osi = o3.OpenSeesInstance(ndm=2, ndf=2, state=3)
+        mat.build(osi)
+
+    k0 = 1.0
+    pois = k0 / (1 + k0)
+    damp = 0.05
+    omega0 = 0.2
+    omega1 = 20.0
+    a1 = 2. * damp / (omega0 + omega1)
+    a0 = a1 * omega0 * omega1
+
+    # Establish nodes
+    h_ele = 1.
+    nodes = [
+        o3.node.Node(osi, 0.0, 0.0),
+        o3.node.Node(osi, h_ele, 0.0),
+        o3.node.Node(osi, h_ele, h_ele),
+        o3.node.Node(osi, 0.0, h_ele)
+    ]
+
+    # Fix bottom node
+    o3.Fix2DOF(osi, nodes[0], o3.cc.FIXED, o3.cc.FIXED)
+    o3.Fix2DOF(osi, nodes[1], o3.cc.FIXED, o3.cc.FIXED)
+    o3.Fix2DOF(osi, nodes[2], o3.cc.FREE, o3.cc.FREE)
+    o3.Fix2DOF(osi, nodes[3], o3.cc.FREE, o3.cc.FREE)
+    # Set out-of-plane DOFs to be slaved
+    o3.EqualDOF(osi, nodes[2], nodes[3], [o3.cc.X, o3.cc.Y])
+
+    ele = o3.element.SSPquad(osi, nodes, mat, 'PlaneStrain', 1, 0.0, 0.0)
+
+    o3.constraints.Transformation(osi)
+    o3.test_check.NormDispIncr(osi, tol=1.0e-3, max_iter=35, p_flag=0)
+    o3.algorithm.Newton(osi)
+    o3.numberer.RCM(osi)
+    o3.system.FullGeneral(osi)
+    # o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_Y, 0.005)
+    o3.integrator.LoadControl(osi, incr=0.01)
+    # o3.rayleigh.Rayleigh(osi, a0, a1, 0.0, 0.0)
+    o3.analysis.Static(osi)
+
+    all_stresses_cache = o3.recorder.ElementToArrayCache(osi, ele, arg_vals=['stress'])
+    all_strains_cache = o3.recorder.ElementToArrayCache(osi, ele, arg_vals=['strain'])
+    all_params_cache = o3.recorder.ElementToArrayCache(osi, ele, arg_vals=['state'])
+
+    # Add static vertical pressure and stress bias
+    # time_series = o3.time_series.Path(osi, time=[0, 100, 1e10], values=[0, 1, 1])
+    # o3.pattern.Plain(osi, time_series)
+    ts0 = o3.time_series.Linear(osi, factor=1)
+    o3.pattern.Plain(osi, ts0)
+    o3.Load(osi, nodes[2], [0, -esig_v0 / 2])
+    o3.Load(osi, nodes[3], [0, -esig_v0 / 2])
+    v_load0 = esig_v0 / 2
+    v_load1 = esig_v0 / 2
+
+    o3.analyze(osi, num_inc=100)
+    stresses = o3.get_ele_response(osi, ele, 'stress')
+    print('init_stress0: ', stresses)
+
+    o3.load_constant(osi)
+
+    o3.wipe_analysis(osi)
+    o3.constraints.Transformation(osi)
+    o3.test_check.NormDispIncr(osi, tol=1.0e-6, max_iter=35, p_flag=0)
+    o3.algorithm.Newton(osi)
+    o3.numberer.RCM(osi)
+    o3.system.FullGeneral(osi)
+    o3.analysis.Static(osi)
+
+    o3.analyze(osi, 25, dt=1)
+    # o3.set_parameter(osi, value=sl.poissons_ratio, eles=[ele], args=['poissonRatio', 1])
+
+    # o3.extensions.to_py_file(osi)
+    stresses = o3.get_ele_response(osi, ele, 'stress')
+    print('init_stress1: ', stresses)
+
+    exit_code = None
+    strain = [0]
+    stresses = o3.get_ele_response(osi, ele, 'stress')
+    force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
+    force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
+    stress = [-force0 - force1]
+    v_eff = [stresses[1]]
+    h_eff = [stresses[0]]
+    d_incs = np.diff(disps, prepend=0)
+    o3.Load(osi, nodes[2], [1.0, 0.0])
+    o3.Load(osi, nodes[3], [1.0, 0.0])
+
+    ts_vload = o3.time_series.Constant(osi, factor=1)
+    lp_vload = o3.pattern.Plain(osi, ts_vload)
+    v_curr = 0
+    o3.Load(osi, nodes[2], [0, v_curr])
+    o3.Load(osi, nodes[3], [0, v_curr])
+    for i in range(len(disps)):
+        d_inc_i = d_incs[i]
+        n = int(max(abs(d_inc_i / target_d_inc), min_n))
+        d_step = d_inc_i / n
+
+        for j in range(n):
+            o3.integrator.DisplacementControl(osi, nodes[2], o3.cc.DOF2D_X, -d_step)
+            # o3.SP(osi, nodes[2], dof=o3.cc.X, dof_values=[1])
+            # o3.SP(osi, nodes[3], dof=o3.cc.X, dof_values=[1])
+            fail = o3.analyze(osi, 1)
+            if fail:
+                print('Model failed')
+                break
+            o3.gen_reactions(osi)
+            stresses = o3.get_ele_response(osi, ele, 'stress')
+            if verbose:
+                print('stresses: ', stresses)
+            v_eff.append(stresses[1])
+            h_eff.append(stresses[0])
+            force0 = o3.get_node_reaction(osi, nodes[0], o3.cc.DOF2D_X)
+            force1 = o3.get_node_reaction(osi, nodes[1], o3.cc.DOF2D_X)
+            # stress.append(-force0 - force1)
+            stress.append(stresses[2])
+            end_strain = o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_X)
+            print('y_disp: ', o3.get_node_disp(osi, nodes[2], dof=o3.cc.DOF2D_Y))
+            print('y_force: ', o3.get_node_reaction(osi, nodes[2], o3.cc.Y), o3.get_node_reaction(osi, nodes[3], o3.cc.Y))
+            strain.append(end_strain)
+            o3.remove_load_pattern(osi, lp_vload)
+            ts_vload = o3.time_series.Constant(osi, factor=1)
+            lp_vload = o3.pattern.Plain(osi, ts_vload)
+            v_curr += (esig_v0 + v_eff[-1]) / 2
+            print('v_eff: ', v_eff[-1], (esig_v0 + v_eff[-1]), v_curr)
+            o3.Load(osi, nodes[2], [0, v_curr])
+            o3.Load(osi, nodes[3], [0, v_curr])
+
+    o3.wipe()
+    all_stresses = all_stresses_cache.collect()
+    all_strains = all_strains_cache.collect()
+    all_params = all_params_cache.collect()
+    return -all_stresses[:, 2], -all_strains[:, 2], all_stresses[:, 0], all_stresses[:, 1], all_params, exit_code
+
+
+
 if __name__ == '__main__':
     # example_of_run_ud_custom_strain(show=1)
     # example_of_run_ts_custom_strain(show=1)
     # example_of_run_ts_custom_strain_w_dss(show=1)
-    example_compare_ts_loader_and_ud_loader(show=1)
+    example_of_run_ts_custom_strain(show=1)
+    # example_compare_ts_loader_and_ud_loader(show=1)

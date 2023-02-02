@@ -109,6 +109,6 @@ if __name__ == '__main__':
         os.makedirs(out_folder)
     run(dytime=2, out_folder=out_folder)
     import o3seespy as o3
-    o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
-    o3res.load_from_cache()
-    o3plot.replot(o3res, xmag=0.5, t_scale=1)
+    # o3res = o3.results.Results2D(cache_path=out_folder, dynamic=True)
+    # o3res.load_from_cache()
+    # o3plot.replot(o3res, xmag=0.5, t_scale=1)
