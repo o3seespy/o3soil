@@ -1,5 +1,5 @@
 import liquepy as lq
-import pysra
+
 import sfsimodels as sm
 import json
 import numpy as np
@@ -7,9 +7,12 @@ import eqsig
 from tests.conftest import TEST_DATA_DIR
 
 import o3soil.sra
+import pytest
 
 
+@pytest.mark.skip(reason="Issues with non-backwards compatible changes in pysra")
 def run_pysra(soil_profile, asig, odepths):
+    import pysra
     pysra_profile = lq.sra.sm_profile_to_pysra(soil_profile, d_inc=[0.5] * soil_profile.n_layers)
     # Should be input in g
     pysra_m = pysra.motion.TimeSeriesMotion(asig.label, None, time_step=asig.dt, accels=-asig.values / 9.8)
